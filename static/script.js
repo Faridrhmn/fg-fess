@@ -97,12 +97,23 @@ async function poll() {
     // Update count regardless
     if (data.total !== undefined) updateCount(data.total);
 
-    // Remove cards that are no longer visible (deleted or hidden by admin)
+    // Update reply counts for all rendered messages in real-time
+    if (data.reply_counts) {
+      for (const [id, count] of Object.entries(data.reply_counts)) {
+        const labelEl = document.querySelector(`#msg-${id} .reply-label`);
+        if (labelEl) {
+          labelEl.textContent = count > 0 ? `Balas · ${count}` : 'Balas';
+        }
+      }
+    }
+
+    // Remove top-level cards that are no longer visible
     if (data.visible_ids) {
       const visibleSet = new Set(data.visible_ids);
       let removedAny = false;
+      const missingIds = [];
 
-      document.querySelectorAll('.message-card, .reply-card').forEach(card => {
+      document.querySelectorAll('.message-card').forEach(card => {
         const id = parseInt(card.dataset.id);
         if (id && !visibleSet.has(id)) {
           card.remove();
@@ -110,7 +121,6 @@ async function poll() {
         }
       });
 
-      // Cleanup empty date separators if any top-level cards were removed
       if (removedAny) {
         document.querySelectorAll('.date-separator').forEach(sep => {
           const next = sep.nextElementSibling;
@@ -119,6 +129,35 @@ async function poll() {
           }
         });
       }
+
+      // Detect newly unhidden top-level messages
+      let oldestId = latestId;
+      document.querySelectorAll('.message-card').forEach(card => {
+        const cid = parseInt(card.dataset.id);
+        if (cid && cid < oldestId) oldestId = cid;
+      });
+
+      data.visible_ids.forEach(id => {
+        if (id >= oldestId && id <= latestId && !document.getElementById(`msg-${id}`)) {
+          missingIds.push(id);
+        }
+      });
+
+      if (missingIds.length > 0) {
+        window.location.reload();
+        return;
+      }
+    }
+
+    // Remove replies that are no longer visible
+    if (data.visible_replies) {
+      const replySet = new Set(data.visible_replies);
+      document.querySelectorAll('.reply-card').forEach(card => {
+        const id = parseInt(card.dataset.id);
+        if (id && !replySet.has(id)) {
+          card.remove();
+        }
+      });
     }
 
     if (!data.messages || data.messages.length === 0) return;
@@ -127,15 +166,16 @@ async function poll() {
     const newMsgs = data.messages.filter(m => 
       m.id > latestId && !pendingMsgs.some(p => p.id === m.id)
     );
-    if (newMsgs.length === 0) return;
+    
+    if (newMsgs.length > 0) {
+      // Add to pending buffer (newest last so we insert in order)
+      pendingMsgs.push(...newMsgs);
 
-    // Add to pending buffer (newest last so we insert in order)
-    pendingMsgs.push(...newMsgs);
-
-    // Show the live notification bar
-    if (liveBar && newCountEl) {
-      newCountEl.textContent = pendingMsgs.length;
-      liveBar.classList.remove('hidden');
+      // Show the live notification bar
+      if (liveBar && newCountEl) {
+        newCountEl.textContent = pendingMsgs.length;
+        liveBar.classList.remove('hidden');
+      }
     }
 
   } catch (e) {
@@ -407,7 +447,10 @@ function buildReplyCard(reply, isNew = false) {
       <div class="reply-avatar">anon</div>
       <div class="reply-bubble">
         <p class="reply-text">${escapeHtml(reply.content)}</p>
-        <time class="reply-time">${reply.time}</time>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+          <time class="reply-time" style="margin-top: 0;">${reply.time}</time>
+          <span class="user-delete-container" id="user-del-${reply.id}"></span>
+        </div>
       </div>
     </div>`;
 }
@@ -487,9 +530,10 @@ function getMyMessages() {
   }
 }
 
-function saveMyMessage(id, token, timestampMs) {
+function saveMyMessage(id, token, serverTimestampMs) {
   const msgs = getMyMessages();
-  msgs[id] = { token, expires: timestampMs + 60000 };
+  // We use the browser's Date.now() to avoid clock skew between server and client
+  msgs[id] = { token, expires: Date.now() + 60000 };
   localStorage.setItem('fgfess_my_msgs', JSON.stringify(msgs));
   updateDeleteCountdowns(); // immediate update
 }
@@ -497,8 +541,6 @@ function saveMyMessage(id, token, timestampMs) {
 async function userDeleteMsg(msgId) {
   const msgs = getMyMessages();
   if (!msgs[msgId]) return;
-
-  if (!confirm('Hapus pesan ini?')) return;
 
   const btn = document.querySelector(`#user-del-${msgId} button`);
   if (btn) btn.disabled = true;

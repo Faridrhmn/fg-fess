@@ -195,8 +195,15 @@ def get_messages():
         query = query.filter(Message.id > since_id)
 
     msgs  = query.order_by(Message.timestamp.desc()).all()
-    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
-    visible_ids = [m[0] for m in db.session.query(Message.id).filter_by(is_hidden=False).all()]
+    
+    # We need all visible top-level messages to provide visible_ids and reply_counts
+    all_visible = Message.query.filter_by(is_hidden=False, parent_id=None).all()
+    total = len(all_visible)
+    visible_ids = [m.id for m in all_visible]
+    reply_counts = {m.id: m.visible_reply_count for m in all_visible}
+
+    # Also need visible IDs for replies so the client can remove deleted replies
+    visible_replies = [m[0] for m in db.session.query(Message.id).filter(Message.is_hidden==False, Message.parent_id.isnot(None)).all()]
 
     return jsonify({
         'messages': [
@@ -211,7 +218,32 @@ def get_messages():
             for m in msgs
         ],
         'total': total,
-        'visible_ids': visible_ids
+        'visible_ids': visible_ids,
+        'visible_replies': visible_replies,
+        'reply_counts': reply_counts
+    })
+
+@app.route('/api/messages_by_ids', methods=['POST'])
+def get_messages_by_ids():
+    """Fetch specific messages by their IDs (used when a message is unhidden)."""
+    ids = request.json.get('ids', [])
+    if not ids:
+        return jsonify({'messages': []})
+        
+    msgs = Message.query.filter(Message.id.in_(ids)).all()
+    return jsonify({
+        'messages': [
+            {
+                'id':          m.id,
+                'content':     m.content,
+                'time':        m.timestamp.strftime('%H:%M'),
+                'date_key':    fmt_date_key(m.timestamp),
+                'date_label':  fmt_date_id(m.timestamp),
+                'reply_count': m.visible_reply_count,
+                'parent_id':   m.parent_id
+            }
+            for m in msgs
+        ]
     })
 
 
