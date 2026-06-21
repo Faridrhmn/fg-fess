@@ -1,15 +1,18 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>fg/fess — Anonymous Message Board</title>
-  <meta name="description" content="Tempat berbagi pesan, cerita, dan perasaan secara anonim. Kirim apa yang ada di pikiranmu." />
+  <title>fg/fess — gedebog</title>
+  <meta name="description"
+    content="Tempat berbagi pesan, cerita, dan perasaan secara anonim. Kirim apa yang ada di pikiranmu." />
   <link rel="icon" href="/static/favicon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
+
 <body>
   <!-- Header -->
   <header class="site-header">
@@ -17,7 +20,7 @@
       <div class="logo">
         <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
       </div>
-      <span class="header-tagline">anonymous message board</span>
+      <span class="header-tagline">gedebog gedang</span>
     </div>
   </header>
 
@@ -28,18 +31,17 @@
         <span class="compose-label">Kirim pesan anonim</span>
         <span class="char-counter" id="charCounter">0 / 500</span>
       </div>
-      <textarea
-        id="messageInput"
-        class="compose-textarea"
-        placeholder="Tulis apa yang ingin kamu sampaikan… tidak ada nama, tidak ada jejak."
-        maxlength="500"
-        rows="4"
-      ></textarea>
+      <textarea id="messageInput" class="compose-textarea"
+        placeholder="Tulis apa yang ingin kamu sampaikan… tidak ada nama, tidak ada jejak." maxlength="500"
+        rows="4"></textarea>
       <div class="compose-footer">
         <p class="compose-note">Pesanmu akan tampil secara publik dan anonim. <kbd>Ctrl+Enter</kbd> untuk kirim.</p>
         <button id="submitBtn" class="btn-send" onclick="submitMessage()">
           <span class="btn-text">Kirim</span>
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
         </button>
       </div>
       <div id="submitFeedback" class="submit-feedback hidden"></div>
@@ -63,58 +65,55 @@
       </div>
       {% endif %}
 
-      <div class="feed" id="feedContainer"
-        data-page="{{ current_page }}"
+      <div class="feed" id="feedContainer" data-page="{{ current_page }}"
         data-latest-id="{{ messages.items[0].id if messages.items else 0 }}">
 
         {% if messages.items %}
-          {% set ns = namespace(last_key=None) %}
-          {% for msg in messages.items %}
-            {# Group by date using the tgl_key and tgl_id filters (Indonesian locale) #}
-            {% set day_key = msg.timestamp | tgl_key %}
-            {% if day_key != ns.last_key %}
-              {% set ns.last_key = day_key %}
-              <div class="date-separator" data-date-key="{{ day_key }}">
-                <span class="date-label">{{ msg.timestamp | tgl_id }}</span>
-              </div>
-            {% endif %}
+        {% set ns = namespace(last_key=None) %}
+        {% for msg in messages.items %}
+        {# Group by date using the tgl_key and tgl_id filters (Indonesian locale) #}
+        {% set day_key = msg.timestamp | tgl_key %}
+        {% if day_key != ns.last_key %}
+        {% set ns.last_key = day_key %}
+        <div class="date-separator" data-date-key="{{ day_key }}">
+          <span class="date-label">{{ msg.timestamp | tgl_id }}</span>
+        </div>
+        {% endif %}
 
-          <article class="message-card" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
-              <p class="message-text">{{ msg.content }}</p>
-              <div class="message-meta">
-                <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
-                <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  <span class="reply-label">Balas{% if msg.visible_reply_count > 0 %} · {{ msg.visible_reply_count }}{% endif %}</span>
-                </button>
-              </div>
-
-              <!-- Reply Thread (hidden by default) -->
-              <div class="reply-thread hidden" id="thread-{{ msg.id }}">
-                <div class="reply-list" id="reply-list-{{ msg.id }}">
-                  <!-- Replies loaded via JS -->
-                  <p class="reply-loading">Memuat balasan…</p>
-                </div>
-                <div class="reply-form">
-                  <textarea
-                    id="reply-input-{{ msg.id }}"
-                    class="reply-textarea"
-                    placeholder="Tulis balasan anonim…"
-                    maxlength="500"
-                    rows="2"
-                  ></textarea>
-                  <div class="reply-form-footer">
-                    <span class="reply-char-counter" id="reply-counter-{{ msg.id }}">0 / 500</span>
-                    <button class="btn-reply-send" onclick="submitReply({{ msg.id }})">Kirim Balasan</button>
-                  </div>
-                </div>
-              </div>
-            </article>
-          {% endfor %}
-        {% else %}
-          <div class="empty-state" id="emptyState">
-            <p>Belum ada pesan. Jadilah yang pertama! 👆</p>
+        <article class="message-card" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
+          <p class="message-text">{{ msg.content }}</p>
+          <div class="message-meta">
+            <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
+            <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span class="reply-label">Balas{% if msg.visible_reply_count > 0 %} · {{ msg.visible_reply_count }}{%
+                endif %}</span>
+            </button>
           </div>
+
+          <!-- Reply Thread (hidden by default) -->
+          <div class="reply-thread hidden" id="thread-{{ msg.id }}">
+            <div class="reply-list" id="reply-list-{{ msg.id }}">
+              <!-- Replies loaded via JS -->
+              <p class="reply-loading">Memuat balasan…</p>
+            </div>
+            <div class="reply-form">
+              <textarea id="reply-input-{{ msg.id }}" class="reply-textarea" placeholder="Tulis balasan anonim…"
+                maxlength="500" rows="2"></textarea>
+              <div class="reply-form-footer">
+                <span class="reply-char-counter" id="reply-counter-{{ msg.id }}">0 / 500</span>
+                <button class="btn-reply-send" onclick="submitReply({{ msg.id }})">Kirim Balasan</button>
+              </div>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state" id="emptyState">
+          <p>Belum ada pesan. Jadilah yang pertama! 👆</p>
+        </div>
         {% endif %}
       </div>
 
@@ -122,50 +121,57 @@
       {% if messages.pages > 1 %}
       <nav class="pagination" aria-label="Navigasi halaman">
         {% if messages.has_prev %}
-          <a href="?page={{ messages.prev_num }}" class="page-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
-            Sebelumnya
-          </a>
+        <a href="?page={{ messages.prev_num }}" class="page-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Sebelumnya
+        </a>
         {% else %}
-          <span class="page-btn page-btn--disabled">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
-            Sebelumnya
-          </span>
+        <span class="page-btn page-btn--disabled">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Sebelumnya
+        </span>
         {% endif %}
 
         <div class="page-numbers">
           {% set start = [messages.page - 2, 1] | max %}
-          {% set end   = [messages.page + 2, messages.pages] | min %}
+          {% set end = [messages.page + 2, messages.pages] | min %}
 
           {% if start > 1 %}
-            <a href="?page=1" class="page-num">1</a>
-            {% if start > 2 %}<span class="page-ellipsis">…</span>{% endif %}
+          <a href="?page=1" class="page-num">1</a>
+          {% if start > 2 %}<span class="page-ellipsis">…</span>{% endif %}
           {% endif %}
 
           {% for p in range(start, end + 1) %}
-            {% if p == messages.page %}
-              <span class="page-num page-num--active">{{ p }}</span>
-            {% else %}
-              <a href="?page={{ p }}" class="page-num">{{ p }}</a>
-            {% endif %}
+          {% if p == messages.page %}
+          <span class="page-num page-num--active">{{ p }}</span>
+          {% else %}
+          <a href="?page={{ p }}" class="page-num">{{ p }}</a>
+          {% endif %}
           {% endfor %}
 
-          {% if end < messages.pages %}
-            {% if end < messages.pages - 1 %}<span class="page-ellipsis">…</span>{% endif %}
+          {% if end < messages.pages %} {% if end < messages.pages - 1 %}<span class="page-ellipsis">…</span>{% endif %}
             <a href="?page={{ messages.pages }}" class="page-num">{{ messages.pages }}</a>
-          {% endif %}
+            {% endif %}
         </div>
 
         {% if messages.has_next %}
-          <a href="?page={{ messages.next_num }}" class="page-btn">
-            Berikutnya
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
-          </a>
+        <a href="?page={{ messages.next_num }}" class="page-btn">
+          Berikutnya
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </a>
         {% else %}
-          <span class="page-btn page-btn--disabled">
-            Berikutnya
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
-          </span>
+        <span class="page-btn page-btn--disabled">
+          Berikutnya
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
         {% endif %}
       </nav>
       {% endif %}
@@ -180,4 +186,5 @@
 
   <script src="/static/script.js"></script>
 </body>
+
 </html>

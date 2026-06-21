@@ -332,12 +332,20 @@ async function toggleReply(msgId, btn) {
     await loadReplies(msgId);
     loadedThreads.add(msgId);
 
-    // Setup char counter for this reply input
+    // Setup char counter and Ctrl+Enter shortcut for this reply input
     const input   = document.getElementById(`reply-input-${msgId}`);
     const counter = document.getElementById(`reply-counter-${msgId}`);
     if (input && counter) {
       input.addEventListener('input', () => {
         counter.textContent = `${input.value.length} / 500`;
+      });
+      
+      // Ctrl+Enter shortcut
+      input.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          submitReply(msgId);
+        }
       });
     }
   }
