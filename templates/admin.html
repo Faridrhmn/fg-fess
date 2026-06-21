@@ -27,15 +27,15 @@
     <!-- Stats Bar -->
     <div class="stats-bar">
       <div class="stat-item">
-        <span class="stat-num">{{ total_visible + total_hidden }}</span>
+        <span class="stat-num" id="statTotal">{{ total_visible + total_hidden }}</span>
         <span class="stat-label">Total Pesan</span>
       </div>
       <div class="stat-item">
-        <span class="stat-num">{{ total_visible }}</span>
+        <span class="stat-num" id="statVisible">{{ total_visible }}</span>
         <span class="stat-label">Terlihat Publik</span>
       </div>
       <div class="stat-item">
-        <span class="stat-num">{{ total_hidden }}</span>
+        <span class="stat-num" id="statHidden">{{ total_hidden }}</span>
         <span class="stat-label">Disembunyikan</span>
       </div>
     </div>
@@ -103,9 +103,17 @@
   </main>
 
   <script>
+    // Update the three stats numbers at the top
+    function updateStats(stats) {
+      if (!stats) return;
+      document.getElementById('statTotal').textContent   = stats.total;
+      document.getElementById('statVisible').textContent = stats.visible;
+      document.getElementById('statHidden').textContent  = stats.hidden;
+    }
+
     async function toggleMessage(id, btn) {
       const card = document.getElementById('admin-msg-' + id);
-      const res = await fetch('/admin/toggle/' + id, { method: 'POST' });
+      const res  = await fetch('/admin/toggle/' + id, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         const isHidden = data.is_hidden;
@@ -114,18 +122,21 @@
           ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Tampilkan</span>`
           : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><span>Sembunyikan</span>`;
         btn.title = isHidden ? 'Tampilkan' : 'Sembunyikan';
+        updateStats(data.stats);
       }
     }
 
     async function deleteMessage(id) {
       if (!confirm('Hapus pesan ini secara permanen?')) return;
-      const res = await fetch('/admin/delete/' + id, { method: 'POST' });
+      const res  = await fetch('/admin/delete/' + id, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         const card = document.getElementById('admin-msg-' + id);
-        card.style.opacity = '0';
+        card.style.opacity   = '0';
         card.style.transform = 'translateX(20px)';
+        card.style.transition = 'opacity .3s, transform .3s';
         setTimeout(() => card.remove(), 300);
+        updateStats(data.stats);
       }
     }
   </script>

@@ -82,10 +82,21 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(150), nullable=False)
 
 class Message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    content = db.Column(db.Text, nullable=False)
+    id        = db.Column(db.Integer, primary_key=True)
+    content   = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    is_hidden = db.Column(db.Boolean, default=False)  # Admin can hide without deleting
+    is_hidden = db.Column(db.Boolean, default=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
+
+    # Relationships
+    replies   = db.relationship('Message',
+                                backref=db.backref('parent', remote_side='Message.id'),
+                                lazy='dynamic',
+                                foreign_keys='Message.parent_id')
+
+    @property
+    def visible_reply_count(self):
+        return self.replies.filter_by(is_hidden=False).count()
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -95,10 +106,11 @@ def load_user(user_id):
 
 @app.route('/')
 def index():
-    """Public menfess board - shows all visible messages."""
+    """Public menfess board - shows all visible top-level messages."""
     page = request.args.get('page', 1, type=int)
     per_page = 20
-    messages = Message.query.filter_by(is_hidden=False)\
+    messages = Message.query\
+        .filter_by(is_hidden=False, parent_id=None)\
         .order_by(Message.timestamp.desc())\
         .paginate(page=page, per_page=per_page, error_out=False)
     return render_template('index.html', messages=messages)
@@ -120,48 +132,78 @@ def submit_message():
     if len(content) > 500:
         return jsonify({'error': 'Pesan maksimal 500 karakter.'}), 400
 
-    new_msg = Message(content=content)
+    # Handle reply
+    parent_id = data.get('parent_id')
+    if parent_id:
+        parent = Message.query.get(parent_id)
+        if not parent or parent.is_hidden or parent.parent_id is not None:
+            return jsonify({'error': 'Pesan induk tidak valid.'}), 400
+
+    new_msg = Message(content=content, parent_id=parent_id if parent_id else None)
     db.session.add(new_msg)
     db.session.commit()
 
-    return jsonify({
-        'success': True,
-        'total': Message.query.filter_by(is_hidden=False).count(),
+    # Total only counts top-level visible messages
+    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
+
+    resp = {
+        'success':   True,
+        'total':     total,
+        'parent_id': parent_id,
         'message': {
-            'id':         new_msg.id,
-            'content':    new_msg.content,
-            'time':       new_msg.timestamp.strftime('%H:%M'),
-            'date_key':   fmt_date_key(new_msg.timestamp),
-            'date_label': fmt_date_id(new_msg.timestamp),
+            'id':          new_msg.id,
+            'content':     new_msg.content,
+            'time':        new_msg.timestamp.strftime('%H:%M'),
+            'date_key':    fmt_date_key(new_msg.timestamp),
+            'date_label':  fmt_date_id(new_msg.timestamp),
+            'reply_count': 0,
         }
-    })
+    }
+    return jsonify(resp)
 
 @app.route('/api/messages')
 def get_messages():
-    """API endpoint to fetch latest messages for live feed.
-    Supports ?since=<id> to return only messages newer than that ID (for polling).
-    """
+    """Fetch top-level messages for live polling. Supports ?since=<id>."""
     since_id = request.args.get('since', 0, type=int)
 
-    query = Message.query.filter_by(is_hidden=False)
+    query = Message.query.filter_by(is_hidden=False, parent_id=None)
     if since_id:
         query = query.filter(Message.id > since_id)
 
-    msgs = query.order_by(Message.timestamp.desc()).all()
-    total = Message.query.filter_by(is_hidden=False).count()
+    msgs  = query.order_by(Message.timestamp.desc()).all()
+    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
 
     return jsonify({
         'messages': [
             {
-                'id': m.id,
-                'content': m.content,
-                'time': m.timestamp.strftime('%H:%M'),
-                'date_key': fmt_date_key(m.timestamp),
-                'date_label': fmt_date_id(m.timestamp),
+                'id':          m.id,
+                'content':     m.content,
+                'time':        m.timestamp.strftime('%H:%M'),
+                'date_key':    fmt_date_key(m.timestamp),
+                'date_label':  fmt_date_id(m.timestamp),
+                'reply_count': m.visible_reply_count,
             }
             for m in msgs
         ],
         'total': total
+    })
+
+
+@app.route('/api/replies/<int:msg_id>')
+def get_replies(msg_id):
+    """Fetch all visible replies for a given message."""
+    parent = Message.query.get_or_404(msg_id)
+    replies = parent.replies.filter_by(is_hidden=False)\
+        .order_by(Message.timestamp.asc()).all()
+    return jsonify({
+        'replies': [
+            {
+                'id':      r.id,
+                'content': r.content,
+                'time':    r.timestamp.strftime('%H:%M'),
+            }
+            for r in replies
+        ]
     })
 
 
@@ -221,7 +263,16 @@ def delete_message(msg_id):
     msg = Message.query.get_or_404(msg_id)
     db.session.delete(msg)
     db.session.commit()
-    return jsonify({'success': True})
+    total_visible = Message.query.filter_by(is_hidden=False).count()
+    total_hidden  = Message.query.filter_by(is_hidden=True).count()
+    return jsonify({
+        'success': True,
+        'stats': {
+            'total':   total_visible + total_hidden,
+            'visible': total_visible,
+            'hidden':  total_hidden,
+        }
+    })
 
 @app.route('/admin/toggle/<int:msg_id>', methods=['POST'])
 @login_required
@@ -230,7 +281,17 @@ def toggle_message(msg_id):
     msg = Message.query.get_or_404(msg_id)
     msg.is_hidden = not msg.is_hidden
     db.session.commit()
-    return jsonify({'success': True, 'is_hidden': msg.is_hidden})
+    total_visible = Message.query.filter_by(is_hidden=False).count()
+    total_hidden  = Message.query.filter_by(is_hidden=True).count()
+    return jsonify({
+        'success':   True,
+        'is_hidden': msg.is_hidden,
+        'stats': {
+            'total':   total_visible + total_hidden,
+            'visible': total_visible,
+            'hidden':  total_hidden,
+        }
+    })
 
 @app.route('/logout')
 @login_required
@@ -261,11 +322,19 @@ with app.app_context():
     db.create_all()
 
     # Aktifkan WAL mode untuk SQLite — concurrent reads & writes lebih baik
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     with db.engine.connect() as conn:
         conn.execute(text('PRAGMA journal_mode=WAL'))
         conn.execute(text('PRAGMA synchronous=NORMAL'))
         conn.execute(text('PRAGMA cache_size=-16000'))  # ~16MB cache
+
+        # Migrasi: tambah kolom parent_id jika belum ada (untuk DB yang sudah ada)
+        inspector = inspect(db.engine)
+        existing_cols = [c['name'] for c in inspector.get_columns('message')]
+        if 'parent_id' not in existing_cols:
+            conn.execute(text('ALTER TABLE message ADD COLUMN parent_id INTEGER REFERENCES message(id)'))
+            print('[Migration] Added parent_id column to message table.')
+
         conn.commit()
 
     admin_username = os.environ.get('ADMIN_USERNAME', 'admin')

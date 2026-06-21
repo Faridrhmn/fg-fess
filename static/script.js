@@ -95,8 +95,10 @@ async function poll() {
 
     if (!data.messages || data.messages.length === 0) return;
 
-    // Filter out any we already know about
-    const newMsgs = data.messages.filter(m => m.id > latestId);
+    // Filter out any we already know about (either already shown or already in buffer)
+    const newMsgs = data.messages.filter(m => 
+      m.id > latestId && !pendingMsgs.some(p => p.id === m.id)
+    );
     if (newMsgs.length === 0) return;
 
     // Add to pending buffer (newest last so we insert in order)
@@ -143,7 +145,6 @@ function injectMessageCard(msg, highlight) {
   // Ensure date separator exists for this message's date
   const existingSep = feed.querySelector(`.date-separator[data-date-key="${msg.date_key}"]`);
   if (!existingSep) {
-    // Insert a new separator at the top (this message is the newest)
     const sep = document.createElement('div');
     sep.className = 'date-separator';
     sep.dataset.dateKey = msg.date_key;
@@ -151,14 +152,41 @@ function injectMessageCard(msg, highlight) {
     feed.insertBefore(sep, feed.firstChild);
   }
 
-  // Build card
+  const replyCount   = msg.reply_count || 0;
+  const replyLabel   = replyCount > 0 ? `Balas · ${replyCount}` : 'Balas';
+
+  // Build card matching the Jinja2 template structure exactly
   const card = document.createElement('article');
   card.className = highlight ? 'message-card new-card' : 'message-card';
   card.id = `msg-${msg.id}`;
   card.dataset.id = msg.id;
   card.innerHTML = `
     <p class="message-text">${escapeHtml(msg.content)}</p>
-    <time class="message-time">${msg.time}</time>
+    <div class="message-meta">
+      <time class="message-time">${msg.time}</time>
+      <button class="reply-toggle-btn" onclick="toggleReply(${msg.id}, this)" data-open="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="reply-label">${replyLabel}</span>
+      </button>
+    </div>
+    <div class="reply-thread hidden" id="thread-${msg.id}">
+      <div class="reply-list" id="reply-list-${msg.id}">
+        <p class="reply-loading">Memuat balasan…</p>
+      </div>
+      <div class="reply-form">
+        <textarea
+          id="reply-input-${msg.id}"
+          class="reply-textarea"
+          placeholder="Tulis balasan anonim…"
+          maxlength="500"
+          rows="2"
+        ></textarea>
+        <div class="reply-form-footer">
+          <span class="reply-char-counter" id="reply-counter-${msg.id}">0 / 500</span>
+          <button class="btn-reply-send" onclick="submitReply(${msg.id})">Kirim Balasan</button>
+        </div>
+      </div>
+    </div>
   `;
 
   // Insert right after the top date separator
@@ -173,6 +201,7 @@ function injectMessageCard(msg, highlight) {
     setTimeout(() => card.classList.remove('new-card'), 600);
   }
 }
+
 
 // ─── Count & Pagination Helpers ──────────────────────────────────────────────
 
@@ -275,6 +304,135 @@ if (textarea) {
     }
   });
 }
+
+// ─── Reply Functions ──────────────────────────────────────────────────────────
+
+// Track which threads have already been loaded
+const loadedThreads = new Set();
+
+async function toggleReply(msgId, btn) {
+  const thread = document.getElementById(`thread-${msgId}`);
+  const isOpen = btn.dataset.open === 'true';
+
+  if (isOpen) {
+    // Close
+    thread.classList.add('hidden');
+    btn.dataset.open = 'false';
+    btn.classList.remove('is-open');
+    return;
+  }
+
+  // Open
+  thread.classList.remove('hidden');
+  btn.dataset.open = 'true';
+  btn.classList.add('is-open');
+
+  // Load replies only once (unless forced)
+  if (!loadedThreads.has(msgId)) {
+    await loadReplies(msgId);
+    loadedThreads.add(msgId);
+
+    // Setup char counter for this reply input
+    const input   = document.getElementById(`reply-input-${msgId}`);
+    const counter = document.getElementById(`reply-counter-${msgId}`);
+    if (input && counter) {
+      input.addEventListener('input', () => {
+        counter.textContent = `${input.value.length} / 500`;
+      });
+    }
+  }
+}
+
+async function loadReplies(msgId) {
+  const listEl = document.getElementById(`reply-list-${msgId}`);
+  if (!listEl) return;
+
+  try {
+    const res  = await fetch(`/api/replies/${msgId}`);
+    const data = await res.json();
+
+    if (!data.replies || data.replies.length === 0) {
+      listEl.innerHTML = `<p class="reply-empty">Belum ada balasan. Jadilah yang pertama!</p>`;
+      return;
+    }
+
+    listEl.innerHTML = data.replies.map(r => buildReplyCard(r)).join('');
+  } catch {
+    listEl.innerHTML = `<p class="reply-empty">Gagal memuat balasan.</p>`;
+  }
+}
+
+function buildReplyCard(reply, isNew = false) {
+  return `
+    <div class="reply-card${isNew ? ' new-reply' : ''}" id="reply-${reply.id}">
+      <div class="reply-avatar">anon</div>
+      <div class="reply-bubble">
+        <p class="reply-text">${escapeHtml(reply.content)}</p>
+        <time class="reply-time">${reply.time}</time>
+      </div>
+    </div>`;
+}
+
+async function submitReply(msgId) {
+  const input = document.getElementById(`reply-input-${msgId}`);
+  const btn   = document.querySelector(`#thread-${msgId} .btn-reply-send`);
+  const content = input.value.trim();
+
+  if (!content) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Mengirim…';
+
+  try {
+    const res  = await fetch('/api/submit', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ message: content, parent_id: msgId })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || 'Gagal mengirim balasan.');
+      return;
+    }
+
+    // Clear input & counter
+    input.value = '';
+    const counter = document.getElementById(`reply-counter-${msgId}`);
+    if (counter) counter.textContent = '0 / 500';
+
+    // Remove "Belum ada balasan" placeholder if present
+    const listEl = document.getElementById(`reply-list-${msgId}`);
+    const empty  = listEl.querySelector('.reply-empty');
+    if (empty) empty.remove();
+
+    // Inject the new reply card
+    listEl.insertAdjacentHTML('beforeend', buildReplyCard(data.message, true));
+
+    // Update reply count on the toggle button
+    updateReplyCount(msgId);
+
+  } catch {
+    alert('Gagal mengirim. Coba lagi.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Kirim Balasan';
+  }
+}
+
+function updateReplyCount(msgId) {
+  const listEl  = document.getElementById(`reply-list-${msgId}`);
+  const cards   = listEl ? listEl.querySelectorAll('.reply-card').length : 0;
+  const labelEl = document.querySelector(`#msg-${msgId} .reply-label`);
+  if (labelEl) {
+    labelEl.textContent = cards > 0 ? `Balas · ${cards}` : 'Balas';
+  }
+}
+
+// ─── Update injectMessageCard to include reply button ─────────────────────────
+
+// (Override the reply_count field for newly polled messages)
+const _origInject = injectMessageCard;
 
 // ─── Start Polling (page 1 only) ─────────────────────────────────────────────
 

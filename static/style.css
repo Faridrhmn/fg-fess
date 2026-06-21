@@ -450,7 +450,175 @@ a { color: inherit; text-decoration: none; }
   user-select: none;
 }
 
+/* ─── Message Meta Row ─────────────────────────────────────────────────────── */
+.message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.reply-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 2px 4px;
+  border-radius: 5px;
+  font-family: inherit;
+  transition: color 0.15s, background 0.15s;
+}
+
+.reply-toggle-btn:hover {
+  color: var(--text-2);
+  background: var(--bg);
+}
+
+.reply-toggle-btn.is-open {
+  color: var(--text-2);
+}
+
+/* ─── Reply Thread ─────────────────────────────────────────────────────────── */
+.reply-thread {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  animation: fadeInUp 0.2s ease;
+}
+
+.reply-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.reply-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.reply-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: var(--text-3);
+}
+
+.reply-bubble {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-text {
+  font-size: 0.875rem;
+  color: var(--text);
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.reply-time {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+.reply-loading {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  text-align: center;
+  padding: 8px 0;
+}
+
+.reply-empty {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* ─── Reply Form ───────────────────────────────────────────────────────────── */
+.reply-form {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.reply-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--text);
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  line-height: 1.5;
+}
+
+.reply-textarea:focus {
+  border-color: var(--border-2);
+  box-shadow: 0 0 0 3px rgba(26,26,24,.05);
+}
+
+.reply-textarea::placeholder { color: var(--text-3); }
+
+.reply-form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 7px;
+}
+
+.reply-char-counter {
+  font-size: 0.7rem;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-reply-send {
+  background: var(--text);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-reply-send:hover    { opacity: 0.82; }
+.btn-reply-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* New reply card animation */
+.reply-card.new-reply {
+  animation: fadeInUp 0.25s ease both;
+}
+
 /* ─── Footer ───────────────────────────────────────────────────────────────── */
+
 .site-footer {
   border-top: 1px solid var(--border);
   padding: 20px 0;
