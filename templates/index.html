@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Me a Message!</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo">
+            <h1>A Safe Space For Your Thoughts</h1>
+            <p>Do you have a story to tell, a burden to share, a piece of critique, or something you've found difficult
+                to say out loud? Just write it here. Btw, I have zero clue who you are, so no need to worry — just say
+                whatever's on your mind.</p>
+            <p style="font-size: 0.9em; opacity: 0.8; margin-top: 5px;"><em>Note: Feel free to be completely honest—no
+                    hard feelings!</em></p>
+        </header>
+
+        <main>
+            <div class="glass-card">
+                <form id="messageForm">
+                    <textarea id="messageBox" rows="5" placeholder="Write whatever is on your mind..."
+                        required></textarea>
+                    <button type="submit" id="submitBtn">Send Message</button>
+                </form>
+            </div>
+
+            <div id="replyContainer" class="glass-card hidden">
+                <h3>Reply for you:</h3>
+                <p id="aiReply"></p>
+                <button id="writeAnotherBtn" class="secondary-btn">Write Another Message</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- <footer>
+        <a href="{{ url_for('login') }}" class="login-link">Admin Login</a>
+    </footer> -->
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>

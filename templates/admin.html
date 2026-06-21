@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Send Me a Message!</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="admin-container">
+        <header class="admin-header glass">
+            <h2>Inbox</h2>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}" style="margin-bottom: 2rem;">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="messages-grid">
+            {% for msg in messages %}
+            <div class="message-card glass">
+                <div class="message-header">
+                    <p class="timestamp">{{ msg.timestamp.strftime('%d %B %Y, %H:%M') }}</p>
+                    <form action="{{ url_for('delete_message', msg_id=msg.id) }}" method="POST" class="delete-form"
+                        style="margin:0; padding:0; display:inline-block; box-shadow:none; background:transparent; max-width:max-content; position:static; bottom:auto;">
+                        <button type="button" class="delete-btn" title="Delete Message"
+                            onclick="confirmDelete(this.form)">🗑️</button>
+                    </form>
+                </div>
+                <p class="content">{{ msg.content }}</p>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No messages yet.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- SweetAlert2 Script -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        function confirmDelete(form) {
+            Swal.fire({
+                title: 'Delete Message?',
+                text: "Deleted messages cannot be recovered.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#4f46e5',
+                confirmButtonText: 'Yes, delete it!',
+                cancelButtonText: 'Cancel',
+                background: 'rgba(30, 27, 75, 0.95)',
+                color: '#fff',
+                backdrop: 'rgba(0,0,0,0.5)'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    form.submit();
+                }
+            })
+        }
+    </script>
+    <script>
+        // Force reload if page is loaded from BFCache (Back-Forward Cache)
+        window.addEventListener("pageshow", function (event) {
+            var historyTraversal = event.persisted || 
+                                   (typeof window.performance != "undefined" && 
+                                    window.performance.navigation.type === 2);
+            if (historyTraversal) {
+                window.location.reload();
+            }
+        });
+    </script>
+</body>
+
+</html>
