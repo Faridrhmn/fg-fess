@@ -1,84 +1,133 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Send Me a Message!</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — fg/fess</title>
+  <link rel="icon" href="/static/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
+<body class="admin-body">
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="logo">
+        <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
+        <span class="admin-badge">admin</span>
+      </div>
+      <div class="header-actions">
+        <a href="/" class="btn-outline-sm" target="_blank">Lihat Board</a>
+        <a href="/logout" class="btn-outline-sm btn-danger-outline">Logout</a>
+      </div>
+    </div>
+  </header>
 
-<body>
-    <div class="admin-container">
-        <header class="admin-header glass">
-            <h2>Inbox</h2>
-            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
-        </header>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category }}" style="margin-bottom: 2rem;">{{ message }}</div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
-
-        <div class="messages-grid">
-            {% for msg in messages %}
-            <div class="message-card glass">
-                <div class="message-header">
-                    <p class="timestamp">{{ msg.timestamp.strftime('%d %B %Y, %H:%M') }}</p>
-                    <form action="{{ url_for('delete_message', msg_id=msg.id) }}" method="POST" class="delete-form"
-                        style="margin:0; padding:0; display:inline-block; box-shadow:none; background:transparent; max-width:max-content; position:static; bottom:auto;">
-                        <button type="button" class="delete-btn" title="Delete Message"
-                            onclick="confirmDelete(this.form)">🗑️</button>
-                    </form>
-                </div>
-                <p class="content">{{ msg.content }}</p>
-            </div>
-            {% else %}
-            <div class="empty-state">
-                <p>No messages yet.</p>
-            </div>
-            {% endfor %}
-        </div>
+  <main class="container admin-layout">
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-num">{{ total_visible + total_hidden }}</span>
+        <span class="stat-label">Total Pesan</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">{{ total_visible }}</span>
+        <span class="stat-label">Terlihat Publik</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">{{ total_hidden }}</span>
+        <span class="stat-label">Disembunyikan</span>
+      </div>
     </div>
 
-    <!-- SweetAlert2 Script -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script>
-        function confirmDelete(form) {
-            Swal.fire({
-                title: 'Delete Message?',
-                text: "Deleted messages cannot be recovered.",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#ef4444',
-                cancelButtonColor: '#4f46e5',
-                confirmButtonText: 'Yes, delete it!',
-                cancelButtonText: 'Cancel',
-                background: 'rgba(30, 27, 75, 0.95)',
-                color: '#fff',
-                backdrop: 'rgba(0,0,0,0.5)'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    form.submit();
-                }
-            })
-        }
-    </script>
-    <script>
-        // Force reload if page is loaded from BFCache (Back-Forward Cache)
-        window.addEventListener("pageshow", function (event) {
-            var historyTraversal = event.persisted || 
-                                   (typeof window.performance != "undefined" && 
-                                    window.performance.navigation.type === 2);
-            if (historyTraversal) {
-                window.location.reload();
-            }
-        });
-    </script>
-</body>
+    <!-- Filter Tabs -->
+    <div class="filter-tabs">
+      <a href="/admin?filter=all" class="tab-btn {% if filter_mode == 'all' %}active{% endif %}">Semua</a>
+      <a href="/admin?filter=visible" class="tab-btn {% if filter_mode == 'visible' %}active{% endif %}">Publik</a>
+      <a href="/admin?filter=hidden" class="tab-btn {% if filter_mode == 'hidden' %}active{% endif %}">Tersembunyi</a>
+    </div>
 
+    <!-- Messages Table -->
+    <div class="admin-feed">
+      {% if messages.items %}
+        {% for msg in messages.items %}
+        <div class="admin-card {% if msg.is_hidden %}is-hidden{% endif %}" id="admin-msg-{{ msg.id }}">
+          <div class="admin-card-body">
+            <p class="admin-msg-text">{{ msg.content }}</p>
+            <time class="admin-msg-time">{{ msg.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ msg.id }}</time>
+          </div>
+          <div class="admin-card-actions">
+            <button
+              class="action-btn btn-toggle"
+              onclick="toggleMessage({{ msg.id }}, this)"
+              title="{% if msg.is_hidden %}Tampilkan{% else %}Sembunyikan{% endif %}"
+            >
+              {% if msg.is_hidden %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Tampilkan</span>
+              {% else %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                <span>Sembunyikan</span>
+              {% endif %}
+            </button>
+            <button
+              class="action-btn btn-delete"
+              onclick="deleteMessage({{ msg.id }})"
+              title="Hapus Permanen"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              <span>Hapus</span>
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state">
+          <p>Tidak ada pesan di filter ini.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if messages.pages > 1 %}
+    <div class="pagination">
+      {% if messages.has_prev %}
+        <a href="/admin?filter={{ filter_mode }}&page={{ messages.prev_num }}" class="page-btn">← Sebelumnya</a>
+      {% endif %}
+      <span class="page-info">{{ messages.page }} / {{ messages.pages }}</span>
+      {% if messages.has_next %}
+        <a href="/admin?filter={{ filter_mode }}&page={{ messages.next_num }}" class="page-btn">Berikutnya →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </main>
+
+  <script>
+    async function toggleMessage(id, btn) {
+      const card = document.getElementById('admin-msg-' + id);
+      const res = await fetch('/admin/toggle/' + id, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const isHidden = data.is_hidden;
+        card.classList.toggle('is-hidden', isHidden);
+        btn.innerHTML = isHidden
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Tampilkan</span>`
+          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><span>Sembunyikan</span>`;
+        btn.title = isHidden ? 'Tampilkan' : 'Sembunyikan';
+      }
+    }
+
+    async function deleteMessage(id) {
+      if (!confirm('Hapus pesan ini secara permanen?')) return;
+      const res = await fetch('/admin/delete/' + id, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const card = document.getElementById('admin-msg-' + id);
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(20px)';
+        setTimeout(() => card.remove(), 300);
+      }
+    }
+  </script>
+</body>
 </html>

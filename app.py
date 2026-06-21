@@ -10,28 +10,72 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-# Menggunakan os.urandom untuk mengenkripsi sesi (cookies login) secara acak dan sangat aman
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///messages.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///messages.db?timeout=20'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# SQLite optimasi: WAL mode agar read & write bisa jalan bersamaan
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {'check_same_thread': False},
+    'pool_size': 10,
+    'pool_timeout': 20,
+    'pool_recycle': 300,
+}
+
+# ─── Indonesian Date Formatter ─────────────────────────────────────────────────
+_HARI  = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu']
+_BULAN = ['','Januari','Februari','Maret','April','Mei','Juni',
+          'Juli','Agustus','September','Oktober','November','Desember']
+
+def fmt_date_id(dt):
+    """Return Indonesian full date string: 'Minggu, 21 Juni 2026'"""
+    return f"{_HARI[dt.weekday()]}, {dt.day:02d} {_BULAN[dt.month]} {dt.year}"
+
+def fmt_date_key(dt):
+    """Return YYYY-MM-DD key for grouping."""
+    return dt.strftime('%Y-%m-%d')
+
+@app.template_filter('tgl_id')
+def tgl_id_filter(dt):
+    return fmt_date_id(dt)
+
+@app.template_filter('tgl_key')
+def tgl_key_filter(dt):
+    return fmt_date_key(dt)
 
 @app.after_request
 def add_header(response):
-    """
-    Add headers to prevent browser caching so that users cannot use the back button
-    to view protected pages after logging out.
-    """
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '-1'
+    # Hanya non-cache untuk halaman HTML dinamis, bukan static assets
+    if response.content_type and 'text/html' in response.content_type:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '-1'
     return response
+
+# ─── Simple In-Memory Rate Limiter ────────────────────────────────────────────────
+_rate_limit_store = {}  # {ip: [timestamp, ...]}
+_RATE_LIMIT = 5         # maks 5 pesan
+_RATE_WINDOW = 60       # per 60 detik
+
+def is_rate_limited(ip):
+    now = datetime.datetime.utcnow().timestamp()
+    window_start = now - _RATE_WINDOW
+    timestamps = _rate_limit_store.get(ip, [])
+    # Buang timestamps di luar window
+    timestamps = [t for t in timestamps if t > window_start]
+    if len(timestamps) >= _RATE_LIMIT:
+        _rate_limit_store[ip] = timestamps
+        return True
+    timestamps.append(now)
+    _rate_limit_store[ip] = timestamps
+    return False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# Models
+# ─── Models ───────────────────────────────────────────────────────────────────
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -41,90 +85,152 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    is_hidden = db.Column(db.Boolean, default=False)  # Admin can hide without deleting
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-import random
+# ─── Public Routes ─────────────────────────────────────────────────────────────
 
-try:
-    from langdetect import detect
-except ImportError:
-    detect = lambda text: 'id'
-
-try:
-    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-    vader_analyzer = SentimentIntensityAnalyzer()
-except ImportError:
-    vader_analyzer = None
-
-# Setup Local AI Model for Offline & Fast Generation
-# Dihapus karena model transformers terlalu berat untuk server 2 core
-sentiment_analyzer = None
-
-# Free AI / Contextual Reply Function using Local Model (Bilingual)
-def generate_reply(message_text):
-    en_neutral = [
-        "Hello! Thank you so much for dropping by and leaving a message. 💌",
-        "So glad to see you here! Your message has been safely saved. 🌻",
-        "Thanks for leaving your mark here. Hope you have a wonderful day! 📝",
-        "Message received! Thank you so much for your time. 🕊️"
-    ]
-    return random.choice(en_neutral)
-
-# Routes
 @app.route('/')
 def index():
-    return render_template('index.html')
+    """Public menfess board - shows all visible messages."""
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    messages = Message.query.filter_by(is_hidden=False)\
+        .order_by(Message.timestamp.desc())\
+        .paginate(page=page, per_page=per_page, error_out=False)
+    return render_template('index.html', messages=messages)
 
 @app.route('/api/submit', methods=['POST'])
 def submit_message():
+    """Submit a new anonymous message to the public board."""
+    # Rate limiting: maks 5 pesan per IP per menit
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    if is_rate_limited(client_ip):
+        return jsonify({'error': f'Terlalu banyak pesan. Tunggu sebentar sebelum mengirim lagi.'}), 429
+
     data = request.get_json()
-    message_content = data.get('message', '').strip()
-    
-    if not message_content:
-        return jsonify({'error': 'Message cannot be empty'}), 400
-        
-    new_message = Message(content=message_content)
-    db.session.add(new_message)
+    content = data.get('message', '').strip()
+
+    if not content:
+        return jsonify({'error': 'Pesan tidak boleh kosong.'}), 400
+
+    if len(content) > 500:
+        return jsonify({'error': 'Pesan maksimal 500 karakter.'}), 400
+
+    new_msg = Message(content=content)
+    db.session.add(new_msg)
     db.session.commit()
-    
-    reply = generate_reply(message_content)
-    return jsonify({'reply': reply})
+
+    return jsonify({
+        'success': True,
+        'total': Message.query.filter_by(is_hidden=False).count(),
+        'message': {
+            'id':         new_msg.id,
+            'content':    new_msg.content,
+            'time':       new_msg.timestamp.strftime('%H:%M'),
+            'date_key':   fmt_date_key(new_msg.timestamp),
+            'date_label': fmt_date_id(new_msg.timestamp),
+        }
+    })
+
+@app.route('/api/messages')
+def get_messages():
+    """API endpoint to fetch latest messages for live feed.
+    Supports ?since=<id> to return only messages newer than that ID (for polling).
+    """
+    since_id = request.args.get('since', 0, type=int)
+
+    query = Message.query.filter_by(is_hidden=False)
+    if since_id:
+        query = query.filter(Message.id > since_id)
+
+    msgs = query.order_by(Message.timestamp.desc()).all()
+    total = Message.query.filter_by(is_hidden=False).count()
+
+    return jsonify({
+        'messages': [
+            {
+                'id': m.id,
+                'content': m.content,
+                'time': m.timestamp.strftime('%H:%M'),
+                'date_key': fmt_date_key(m.timestamp),
+                'date_label': fmt_date_id(m.timestamp),
+            }
+            for m in msgs
+        ],
+        'total': total
+    })
+
+
+@app.route('/api/stats')
+def get_stats():
+    """Quick endpoint for real-time total count."""
+    total = Message.query.filter_by(is_hidden=False).count()
+    return jsonify({'total': total})
+
+# ─── Admin Routes ──────────────────────────────────────────────────────────────
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('admin'))
-        
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('admin'))
         else:
-            flash('Incorrect username or password.', 'danger')
-            
+            flash('Username atau password salah.', 'danger')
     return render_template('login.html')
 
 @app.route('/admin')
 @login_required
 def admin():
-    messages = Message.query.order_by(Message.timestamp.desc()).all()
-    return render_template('admin.html', messages=messages)
+    """Admin dashboard - sees ALL messages including hidden ones."""
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    filter_mode = request.args.get('filter', 'all')
+
+    query = Message.query
+    if filter_mode == 'hidden':
+        query = query.filter_by(is_hidden=True)
+    elif filter_mode == 'visible':
+        query = query.filter_by(is_hidden=False)
+
+    messages = query.order_by(Message.timestamp.desc())\
+        .paginate(page=page, per_page=per_page, error_out=False)
+
+    total_visible = Message.query.filter_by(is_hidden=False).count()
+    total_hidden = Message.query.filter_by(is_hidden=True).count()
+
+    return render_template('admin.html',
+                           messages=messages,
+                           filter_mode=filter_mode,
+                           total_visible=total_visible,
+                           total_hidden=total_hidden)
 
 @app.route('/admin/delete/<int:msg_id>', methods=['POST'])
 @login_required
 def delete_message(msg_id):
+    """Permanently delete a message."""
     msg = Message.query.get_or_404(msg_id)
     db.session.delete(msg)
     db.session.commit()
-    flash('Message successfully deleted.', 'success')
-    return redirect(url_for('admin'))
+    return jsonify({'success': True})
+
+@app.route('/admin/toggle/<int:msg_id>', methods=['POST'])
+@login_required
+def toggle_message(msg_id):
+    """Hide or unhide a message from public view."""
+    msg = Message.query.get_or_404(msg_id)
+    msg.is_hidden = not msg.is_hidden
+    db.session.commit()
+    return jsonify({'success': True, 'is_hidden': msg.is_hidden})
 
 @app.route('/logout')
 @login_required
@@ -132,23 +238,39 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# Backup Logic
+# ─── Backup ────────────────────────────────────────────────────────────────────
+
 def backup_messages():
+    """Monthly backup of all messages to a text file."""
     with app.app_context():
-        messages = Message.query.all()
-        backup_path = os.path.join(app.root_path, 'backups.txt')
-        with open(backup_path, 'a', encoding='utf-8') as f:
-            f.write(f"\n--- Backup on {datetime.datetime.now()} ---\n")
+        messages = Message.query.order_by(Message.timestamp).all()
+        backup_dir = os.path.join(app.root_path, 'backups')
+        os.makedirs(backup_dir, exist_ok=True)
+        filename = f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+        backup_path = os.path.join(backup_dir, filename)
+        with open(backup_path, 'w', encoding='utf-8') as f:
+            f.write(f"=== Menfess Backup - {datetime.datetime.now()} ===\n\n")
             for msg in messages:
-                f.write(f"[{msg.timestamp}] {msg.content}\n")
-        print(f"Backup completed at {datetime.datetime.now()}")
+                status = "[HIDDEN]" if msg.is_hidden else "[VISIBLE]"
+                f.write(f"{status} [{msg.timestamp}] (ID:{msg.id})\n{msg.content}\n\n")
+        print(f"[Backup] Saved to {backup_path}")
+
+# ─── Init ──────────────────────────────────────────────────────────────────────
 
 with app.app_context():
     db.create_all()
-    # Create or update default admin user from environment variables
+
+    # Aktifkan WAL mode untuk SQLite — concurrent reads & writes lebih baik
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        conn.execute(text('PRAGMA journal_mode=WAL'))
+        conn.execute(text('PRAGMA synchronous=NORMAL'))
+        conn.execute(text('PRAGMA cache_size=-16000'))  # ~16MB cache
+        conn.commit()
+
     admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
-    admin_password = os.environ.get('ADMIN_PASSWORD', 'defaultpassword')
-    
+    admin_password = os.environ.get('ADMIN_PASSWORD', 'password')
+
     admin_user = User.query.first()
     if not admin_user:
         hashed_pw = generate_password_hash(admin_password, method='pbkdf2:sha256')
@@ -161,12 +283,12 @@ with app.app_context():
         db.session.commit()
 
 if __name__ == '__main__':
-    # Schedule backup every 1 month (approx 30 days)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     scheduler = BackgroundScheduler()
-    scheduler.add_job(func=backup_messages, trigger="interval", days=30)
+    scheduler.add_job(func=backup_messages, trigger='interval', days=30)
     scheduler.start()
-    
     try:
-        app.run(debug=True, port=5000)
+        app.run(debug=debug_mode, port=5000)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
+

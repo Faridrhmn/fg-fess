@@ -1,93 +1,300 @@
-# ✉️ Send Me a Message!
+# fg/fess — Anonymous Message Board
 
-![UI Preview](static/logo.png) <!-- Update with your actual preview image path later -->
+Papan pesan anonim sederhana berbasis web. Siapapun bisa mengirim pesan tanpa nama, dan semua pesan tampil secara publik untuk dibaca bersama.
 
-Sometimes, people have stories, critiques, or feelings that are difficult to express face-to-face. **Send Me a Message!** is a secure, private, and anonymous web dashboard built to bridge that gap. It serves as a safe digital space where anyone can drop their honest thoughts directly to the creator without any hesitation. 
-
-Constructive criticism, random rants, or untold stories—everything is welcome, and there are absolutely no hard feelings.
+Cocok untuk menfess komunitas, kelas, atau lingkaran pertemanan.
 
 ---
 
-## ✨ Features
+## ✨ Fitur
 
-- **🔒 Secure & Anonymous**: A safe space for users to drop messages anonymously.
-- **🛡️ Admin Dashboard**: A secure login portal for the creator to read, manage, and delete incoming messages safely.
-- **🎨 Modern Dark Glassmorphism UI**: Beautiful, highly responsive, and interactive interface built with vanilla CSS.
-- **🗄️ Automated Backups**: A background scheduler automatically backs up all messages to a text file every 30 days to ensure no data is lost.
-- **⚙️ Environment Secured**: Administrative credentials and secret keys are securely loaded from a `.env` file to prevent accidental exposure.
+- **📢 Papan Pesan Publik** — semua pesan tampil secara anonim dan bisa dibaca siapa saja
+- **⚡ Live Feed** — pesan baru dari orang lain muncul otomatis tanpa reload halaman (polling tiap 5 detik)
+- **📅 Pemisah Tanggal** — pesan dikelompokkan per hari dengan label tanggal Bahasa Indonesia
+- **📄 Pagination** — 20 pesan per halaman, muncul otomatis saat feed mulai penuh
+- **🛡️ Admin Dashboard** — login khusus untuk melihat, menyembunyikan, atau menghapus pesan yang tidak pantas
+- **🚫 Rate Limiting** — maksimal 5 pesan per IP per menit untuk mencegah spam
+- **💾 Backup Otomatis** — seluruh pesan di-backup ke file teks setiap 30 hari
+- **🔒 Session Aman** — login admin berbasis cookie terenkripsi, tidak bisa diakses lintas perangkat
 
-## 🛠️ Technology Stack
+---
 
-- **Backend**: Python 3, Flask, Flask-SQLAlchemy, Flask-Login
-- **Frontend**: HTML5, Vanilla CSS (Glassmorphism), JavaScript (Fetch API)
-- **Database**: SQLite3
-- **Automation**: `APScheduler`
-- **Environment**: `python-dotenv`
+## 🛠️ Tech Stack
 
-## 🚀 Getting Started
+- **Backend:** Python 3, Flask, Flask-SQLAlchemy, Flask-Login
+- **Frontend:** HTML5, Vanilla CSS, Vanilla JavaScript (Fetch API, Polling)
+- **Database:** SQLite3 (WAL mode untuk concurrent access)
+- **Production Server:** Gunicorn + Nginx
+- **Scheduler:** APScheduler (backup bulanan)
+- **Environment:** python-dotenv
 
-### Prerequisites
+---
 
-Ensure you have Python 3.8+ installed on your system.
+## 📂 Struktur Proyek
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/Faridrhmn/send-me-a-message.git
-cd send-me-a-message
+```
+fg-fess/
+├── app.py                  # Aplikasi Flask utama
+├── requirements.txt        # Python dependencies
+├── .env.example            # Template environment variables
+├── .env                    # Konfigurasi (tidak di-commit ke git)
+├── instance/               # SQLite database (auto-generated)
+├── backups/                # File backup bulanan (auto-generated)
+├── static/
+│   ├── style.css           # Stylesheet utama
+│   ├── script.js           # Logic frontend (live feed, polling)
+│   └── favicon.png
+└── templates/
+    ├── index.html          # Halaman publik (papan pesan)
+    ├── login.html          # Halaman login admin
+    └── admin.html          # Dashboard admin
 ```
 
-### 2. Create a Virtual Environment (Optional but recommended)
+---
+
+## 🚀 Menjalankan Secara Lokal
+
+### Prasyarat
+- Python 3.8+
+
+### 1. Clone & masuk ke folder
+
+```bash
+git clone https://github.com/Faridrhmn/fg-fess.git
+cd fg-fess
+```
+
+### 2. Buat Virtual Environment
 
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+source venv/bin/activate        # Linux/macOS
+# venv\Scripts\activate         # Windows
 ```
 
-### 3. Install Dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Setup Environment Variables
-
-Copy the example environment file and create your own `.env` file:
+### 4. Setup environment variables
 
 ```bash
 cp .env.example .env
 ```
-Open `.env` and fill in your desired `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and a secure `SECRET_KEY`.
 
-### 5. Run the Application
+Buka `.env` dan isi:
+
+```env
+SECRET_KEY=isi_dengan_string_acak_panjang
+ADMIN_USERNAME=username_pilihanmu
+ADMIN_PASSWORD=password_kuat_pilihanmu
+```
+
+> Generate SECRET_KEY yang aman:
+> ```bash
+> python -c "import secrets; print(secrets.token_hex(32))"
+> ```
+
+### 5. Jalankan
 
 ```bash
 python app.py
 ```
-The database (`messages.db`) will be automatically initialized and empty upon the first run. The app will be accessible at `http://127.0.0.1:5000`.
 
-## 📂 Project Structure
+Akses di `http://127.0.0.1:5000` — database akan dibuat otomatis saat pertama run.
 
-```text
-send-me-a-message/
-├── app.py                  # Main Flask application
-├── requirements.txt        # Python dependencies
-├── .env.example            # Environment variables template
-├── instance/               # Auto-generated folder containing the SQLite DB
-├── static/                 # Static assets (CSS, JS, Images)
-│   ├── style.css
-│   ├── script.js
-│   └── logo.png
-└── templates/              # HTML Templates
-    ├── index.html          # Public messaging page
-    ├── login.html          # Admin login page
-    └── admin.html          # Secure admin inbox dashboard
+---
+
+## 🌐 Deploy ke Server Produksi (Gunicorn + Nginx + Systemd)
+
+Panduan ini untuk server Ubuntu/Debian dengan domain yang sudah mengarah ke IP server.
+
+### Prasyarat Server
+- Ubuntu 20.04+ / Debian
+- Nginx terinstall (`sudo apt install nginx`)
+- Python 3.8+
+- Domain yang sudah pointing ke IP server
+
+---
+
+### Step 1 — Upload & Setup di Server
+
+```bash
+# Clone repo ke server
+git clone https://github.com/Faridrhmn/fg-fess.git /var/www/fg-fess
+cd /var/www/fg-fess
+
+# Buat virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install semua dependencies (termasuk gunicorn)
+pip install -r requirements.txt
 ```
 
-## 🤝 Contributing
+### Step 2 — Konfigurasi Environment
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/Faridrhmn/send-me-a-message/issues).
+```bash
+cp .env.example .env
+nano .env
+```
 
-## 📝 License
+Isi dengan nilai yang aman:
 
-This project is licensed under the MIT License.
+```env
+SECRET_KEY=ganti_dengan_hasil_python_secrets_token_hex_32
+ADMIN_USERNAME=admin_kamu
+ADMIN_PASSWORD=password_sangat_kuat
+```
+
+### Step 3 — Uji Gunicorn
+
+Sebelum setup service, pastikan Gunicorn bisa jalan:
+
+```bash
+source venv/bin/activate
+gunicorn -w 4 --threads 2 --preload -b 0.0.0.0:5000 app:app
+```
+
+Akses `http://IP_SERVER:5000` — kalau muncul halaman, lanjut ke step berikutnya. Hentikan dengan `Ctrl+C`.
+
+### Step 4 — Buat Systemd Service
+
+```bash
+sudo nano /etc/systemd/system/fgfess.service
+```
+
+Isi dengan (sesuaikan path):
+
+```ini
+[Unit]
+Description=fg/fess Menfess App
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/fg-fess
+Environment="PATH=/var/www/fg-fess/venv/bin"
+ExecStart=/var/www/fg-fess/venv/bin/gunicorn \
+    -w 4 \
+    --threads 2 \
+    --preload \
+    --bind 0.0.0.0:5000 \
+    app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Aktifkan service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable fgfess
+sudo systemctl start fgfess
+
+# Cek status
+sudo systemctl status fgfess
+```
+
+### Step 5 — Konfigurasi Nginx
+
+```bash
+sudo nano /etc/nginx/sites-available/fgfess
+```
+
+Isi:
+
+```nginx
+server {
+    listen 80;
+    server_name domainmu.com www.domainmu.com;
+
+    # Static files dilayani langsung oleh Nginx (lebih cepat, hemat resource)
+    location /static/ {
+        alias /var/www/fg-fess/static/;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Semua request lain diteruskan ke Gunicorn
+    location / {
+        proxy_pass         http://127.0.0.1:5000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+    }
+}
+```
+
+Aktifkan konfigurasi:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/fgfess /etc/nginx/sites-enabled/
+sudo nginx -t          # test konfigurasi, pastikan "syntax is ok"
+sudo systemctl reload nginx
+```
+
+### Step 6 — HTTPS dengan SSL (Opsional tapi Disarankan)
+
+```bash
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d domainmu.com -d www.domainmu.com
+```
+
+Certbot akan otomatis update konfigurasi Nginx dan setup auto-renewal.
+
+---
+
+### Perintah Berguna Setelah Deploy
+
+```bash
+# Cek log aplikasi secara live
+sudo journalctl -u fgfess -f
+
+# Restart app (setelah update kode)
+sudo systemctl restart fgfess
+
+# Update kode dari git
+cd /var/www/fg-fess
+git pull
+source venv/bin/activate
+pip install -r requirements.txt   # jika ada dependency baru
+sudo systemctl restart fgfess
+```
+
+---
+
+## 🔐 Akses Admin
+
+- URL: `https://domainmu.com/login`
+- Login menggunakan `ADMIN_USERNAME` dan `ADMIN_PASSWORD` dari file `.env`
+- Session admin tersimpan di cookie browser — setiap perangkat harus login sendiri
+- Admin bisa: **menyembunyikan** pesan (tidak tampil publik) atau **menghapus permanen**
+
+---
+
+## 💾 Backup
+
+File backup otomatis disimpan di folder `backups/` setiap 30 hari dalam format:
+
+```
+backups/
+└── backup_2026-06-21_00-00-00.txt
+```
+
+Untuk backup manual kapanpun bisa dengan menjalankan fungsi `backup_messages()` via Python shell.
+
+---
+
+## 📝 Lisensi
+
+MIT License — bebas digunakan dan dimodifikasi.

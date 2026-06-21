@@ -1,55 +1,283 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const form = document.getElementById('messageForm');
-    const submitBtn = document.getElementById('submitBtn');
-    const replyContainer = document.getElementById('replyContainer');
-    const aiReply = document.getElementById('aiReply');
-    const writeAnotherBtn = document.getElementById('writeAnotherBtn');
-    const messageBox = document.getElementById('messageBox');
-    
-    if (form) {
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const message = messageBox.value.trim();
-            if (!message) return;
-            
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Sending...';
-            
-            try {
-                const response = await fetch('/api/submit', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ message })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    form.parentElement.classList.add('hidden');
-                    replyContainer.classList.remove('hidden');
-                    aiReply.textContent = data.reply;
-                    messageBox.value = '';
-                } else {
-                    alert('Failed to send message. Please try again.');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Network error occurred.');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Send Message';
-            }
-        });
+// ─── State ────────────────────────────────────────────────────────────────────
+
+const feed       = document.getElementById('feedContainer');
+const countEl    = document.getElementById('feedCount');
+const liveBar    = document.getElementById('liveIndicator');
+const newCountEl = document.getElementById('newMsgCount');
+
+// Current page — polling only runs on page 1
+const currentPage  = feed ? parseInt(feed.dataset.page || '1') : 1;
+let latestId        = feed ? parseInt(feed.dataset.latestId || '0') : 0;
+let pendingMsgs     = []; // buffer for new messages while user hasn't clicked "Tampilkan"
+let pollInterval    = null;
+const PER_PAGE      = 20;
+// Parse initial total from text like "15 pesan" → 15
+let lastKnownTotal  = parseInt((document.getElementById('feedCount')?.textContent || '0').replace(/\D/g, '')) || 0;
+
+// ─── Character Counter ────────────────────────────────────────────────────────
+
+const textarea = document.getElementById('messageInput');
+const counter  = document.getElementById('charCounter');
+
+if (textarea && counter) {
+  textarea.addEventListener('input', () => {
+    const len = textarea.value.length;
+    counter.textContent = `${len} / 500`;
+    counter.classList.toggle('near-limit', len >= 400 && len < 480);
+    counter.classList.toggle('at-limit', len >= 480);
+  });
+}
+
+// ─── Submit Message ───────────────────────────────────────────────────────────
+
+async function submitMessage() {
+  const input    = document.getElementById('messageInput');
+  const btn      = document.getElementById('submitBtn');
+  const feedback = document.getElementById('submitFeedback');
+
+  const message = input.value.trim();
+  if (!message) return;
+
+  btn.disabled = true;
+  btn.querySelector('.btn-text').textContent = 'Mengirim…';
+  feedback.className = 'submit-feedback hidden';
+
+  try {
+    const res  = await fetch('/api/submit', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ message })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showFeedback(feedback, 'error', data.error || 'Terjadi kesalahan.');
+      return;
     }
-    
-    if (writeAnotherBtn) {
-        writeAnotherBtn.addEventListener('click', () => {
-            replyContainer.classList.add('hidden');
-            form.parentElement.classList.remove('hidden');
-            messageBox.focus();
-        });
+
+    input.value = '';
+    if (counter) {
+      counter.textContent = '0 / 500';
+      counter.classList.remove('near-limit', 'at-limit');
     }
-});
+
+    showFeedback(feedback, 'success', '✓ Pesanmu telah terkirim!');
+
+    // Inject own message immediately (skip pending buffer — own message shown right away)
+    if (currentPage === 1 && data.message) {
+      const msg = data.message;
+      injectMessageCard(msg, true);
+      // Update latestId so next poll ignores our own message
+      if (msg.id > latestId) latestId = msg.id;
+      // Update count
+      updateCount(data.total);
+    }
+
+  } catch (e) {
+    showFeedback(feedback, 'error', 'Gagal mengirim. Coba lagi.');
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-text').textContent = 'Kirim';
+  }
+}
+
+// ─── Realtime Polling ─────────────────────────────────────────────────────────
+
+async function poll() {
+  if (currentPage !== 1) return; // only poll on first page
+
+  try {
+    const res  = await fetch(`/api/messages?since=${latestId}`);
+    const data = await res.json();
+
+    // Update count regardless
+    if (data.total !== undefined) updateCount(data.total);
+
+    if (!data.messages || data.messages.length === 0) return;
+
+    // Filter out any we already know about
+    const newMsgs = data.messages.filter(m => m.id > latestId);
+    if (newMsgs.length === 0) return;
+
+    // Add to pending buffer (newest last so we insert in order)
+    pendingMsgs.push(...newMsgs);
+
+    // Show the live notification bar
+    if (liveBar && newCountEl) {
+      newCountEl.textContent = pendingMsgs.length;
+      liveBar.classList.remove('hidden');
+    }
+
+  } catch (e) {
+    // Silently fail — network hiccup
+  }
+}
+
+// Called when user clicks "Tampilkan" on the live bar
+function loadNewMessages() {
+  if (!pendingMsgs.length) return;
+
+  // Sort ascending so oldest-new goes in first → newest at top
+  pendingMsgs.sort((a, b) => a.id - b.id);
+
+  pendingMsgs.forEach(msg => {
+    injectMessageCard(msg, false);
+    if (msg.id > latestId) latestId = msg.id;
+  });
+
+  pendingMsgs = [];
+
+  // Hide live bar
+  if (liveBar) liveBar.classList.add('hidden');
+}
+
+// ─── Card Injection Helper ────────────────────────────────────────────────────
+
+function injectMessageCard(msg, highlight) {
+  if (!feed) return;
+
+  // Remove empty state if present
+  const emptyState = feed.querySelector('.empty-state');
+  if (emptyState) emptyState.remove();
+
+  // Ensure date separator exists for this message's date
+  const existingSep = feed.querySelector(`.date-separator[data-date-key="${msg.date_key}"]`);
+  if (!existingSep) {
+    // Insert a new separator at the top (this message is the newest)
+    const sep = document.createElement('div');
+    sep.className = 'date-separator';
+    sep.dataset.dateKey = msg.date_key;
+    sep.innerHTML = `<span class="date-label">${msg.date_label}</span>`;
+    feed.insertBefore(sep, feed.firstChild);
+  }
+
+  // Build card
+  const card = document.createElement('article');
+  card.className = highlight ? 'message-card new-card' : 'message-card';
+  card.id = `msg-${msg.id}`;
+  card.dataset.id = msg.id;
+  card.innerHTML = `
+    <p class="message-text">${escapeHtml(msg.content)}</p>
+    <time class="message-time">${msg.time}</time>
+  `;
+
+  // Insert right after the top date separator
+  const topSep = feed.querySelector('.date-separator');
+  if (topSep && topSep.nextSibling) {
+    feed.insertBefore(card, topSep.nextSibling);
+  } else {
+    feed.insertBefore(card, feed.firstChild);
+  }
+
+  if (highlight) {
+    setTimeout(() => card.classList.remove('new-card'), 600);
+  }
+}
+
+// ─── Count & Pagination Helpers ──────────────────────────────────────────────
+
+function updateCount(total) {
+  if (countEl) countEl.textContent = `${total} pesan`;
+
+  // Only update pagination if total pages changed
+  const prevPages = Math.ceil(lastKnownTotal / PER_PAGE);
+  const newPages  = Math.ceil(total / PER_PAGE);
+  if (newPages !== prevPages || (newPages > 1 && !document.querySelector('.pagination'))) {
+    updatePagination(total);
+  }
+  lastKnownTotal = total;
+}
+
+/**
+ * Dynamically render or update the pagination nav below the feed.
+ * We're always on page 1 when this runs (polling is page-1-only).
+ */
+function updatePagination(total) {
+  const feedSection = document.querySelector('.feed-section');
+  if (!feedSection) return;
+
+  const totalPages = Math.ceil(total / PER_PAGE);
+
+  // No pagination needed
+  if (totalPages <= 1) {
+    const existing = document.querySelector('.pagination');
+    if (existing) existing.remove();
+    return;
+  }
+
+  // Build page numbers HTML (show up to 5 around current page = 1)
+  let numsHtml = '';
+  const maxShown = 5;
+  const end = Math.min(totalPages, maxShown);
+
+  for (let p = 1; p <= end; p++) {
+    if (p === 1) {
+      numsHtml += `<span class="page-num page-num--active">1</span>`;
+    } else {
+      numsHtml += `<a href="?page=${p}" class="page-num">${p}</a>`;
+    }
+  }
+  if (totalPages > maxShown) {
+    numsHtml += `<span class="page-ellipsis">…</span>`;
+    numsHtml += `<a href="?page=${totalPages}" class="page-num">${totalPages}</a>`;
+  }
+
+  const html = `
+    <span class="page-btn page-btn--disabled">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
+      Sebelumnya
+    </span>
+    <div class="page-numbers">${numsHtml}</div>
+    <a href="?page=2" class="page-btn">
+      Berikutnya
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+  `;
+
+  let nav = document.querySelector('.pagination');
+  if (nav) {
+    nav.innerHTML = html;
+  } else {
+    nav = document.createElement('nav');
+    nav.className = 'pagination';
+    nav.setAttribute('aria-label', 'Navigasi halaman');
+    nav.innerHTML = html;
+    feedSection.appendChild(nav);
+  }
+}
+
+// ─── Feedback Helper ──────────────────────────────────────────────────────────
+
+function showFeedback(el, type, text) {
+  el.textContent = text;
+  el.className   = `submit-feedback ${type}`;
+  setTimeout(() => { el.className = 'submit-feedback hidden'; }, 4000);
+}
+
+// ─── XSS-safe HTML escape ─────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ─── Ctrl+Enter Shortcut ─────────────────────────────────────────────────────
+
+if (textarea) {
+  textarea.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      submitMessage();
+    }
+  });
+}
+
+// ─── Start Polling (page 1 only) ─────────────────────────────────────────────
+
+if (currentPage === 1) {
+  pollInterval = setInterval(poll, 5000); // every 5 seconds
+}
