@@ -84,13 +84,15 @@
           <p class="message-text">{{ msg.content }}</p>
           <div class="message-meta">
             <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
-            <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span class="reply-label">Balas{% if msg.visible_reply_count > 0 %} · {{ msg.visible_reply_count }}{%
-                endif %}</span>
-            </button>
+            <div class="meta-actions">
+              <span class="user-delete-container" id="user-del-{{ msg.id }}"></span>
+              <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span class="reply-label">Balas{% if msg.visible_reply_count > 0 %} · {{ msg.visible_reply_count }}{% endif %}</span>
+              </button>
+            </div>
           </div>
 
           <!-- Reply Thread (hidden by default) -->

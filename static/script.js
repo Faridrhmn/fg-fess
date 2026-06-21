@@ -63,6 +63,10 @@ async function submitMessage() {
 
     showFeedback(feedback, 'success', '✓ Pesanmu telah terkirim!');
 
+    if (data.message && data.message.secret_token) {
+      saveMyMessage(data.message.id, data.message.secret_token, data.message.timestamp_ms);
+    }
+
     // Inject own message immediately (skip pending buffer — own message shown right away)
     if (currentPage === 1 && data.message) {
       const msg = data.message;
@@ -92,6 +96,30 @@ async function poll() {
 
     // Update count regardless
     if (data.total !== undefined) updateCount(data.total);
+
+    // Remove cards that are no longer visible (deleted or hidden by admin)
+    if (data.visible_ids) {
+      const visibleSet = new Set(data.visible_ids);
+      let removedAny = false;
+
+      document.querySelectorAll('.message-card, .reply-card').forEach(card => {
+        const id = parseInt(card.dataset.id);
+        if (id && !visibleSet.has(id)) {
+          card.remove();
+          removedAny = true;
+        }
+      });
+
+      // Cleanup empty date separators if any top-level cards were removed
+      if (removedAny) {
+        document.querySelectorAll('.date-separator').forEach(sep => {
+          const next = sep.nextElementSibling;
+          if (!next || next.classList.contains('date-separator') || next.classList.contains('pagination') || next.classList.contains('empty-state')) {
+            sep.remove();
+          }
+        });
+      }
+    }
 
     if (!data.messages || data.messages.length === 0) return;
 
@@ -164,10 +192,13 @@ function injectMessageCard(msg, highlight) {
     <p class="message-text">${escapeHtml(msg.content)}</p>
     <div class="message-meta">
       <time class="message-time">${msg.time}</time>
-      <button class="reply-toggle-btn" onclick="toggleReply(${msg.id}, this)" data-open="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span class="reply-label">${replyLabel}</span>
-      </button>
+      <div class="meta-actions">
+        <span class="user-delete-container" id="user-del-${msg.id}"></span>
+        <button class="reply-toggle-btn" onclick="toggleReply(${msg.id}, this)" data-open="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="reply-label">${replyLabel}</span>
+        </button>
+      </div>
     </div>
     <div class="reply-thread hidden" id="thread-${msg.id}">
       <div class="reply-list" id="reply-list-${msg.id}">
@@ -372,7 +403,7 @@ async function loadReplies(msgId) {
 
 function buildReplyCard(reply, isNew = false) {
   return `
-    <div class="reply-card${isNew ? ' new-reply' : ''}" id="reply-${reply.id}">
+    <div class="reply-card${isNew ? ' new-reply' : ''}" id="reply-${reply.id}" data-id="${reply.id}">
       <div class="reply-avatar">anon</div>
       <div class="reply-bubble">
         <p class="reply-text">${escapeHtml(reply.content)}</p>
@@ -409,6 +440,10 @@ async function submitReply(msgId) {
     const counter = document.getElementById(`reply-counter-${msgId}`);
     if (counter) counter.textContent = '0 / 500';
 
+    if (data.message && data.message.secret_token) {
+      saveMyMessage(data.message.id, data.message.secret_token, data.message.timestamp_ms);
+    }
+
     // Remove "Belum ada balasan" placeholder if present
     const listEl = document.getElementById(`reply-list-${msgId}`);
     const empty  = listEl.querySelector('.reply-empty');
@@ -441,6 +476,96 @@ function updateReplyCount(msgId) {
 
 // (Override the reply_count field for newly polled messages)
 const _origInject = injectMessageCard;
+
+// ─── 1-Minute Delete Feature ───────────────────────────────────────────────────
+
+function getMyMessages() {
+  try {
+    return JSON.parse(localStorage.getItem('fgfess_my_msgs') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveMyMessage(id, token, timestampMs) {
+  const msgs = getMyMessages();
+  msgs[id] = { token, expires: timestampMs + 60000 };
+  localStorage.setItem('fgfess_my_msgs', JSON.stringify(msgs));
+  updateDeleteCountdowns(); // immediate update
+}
+
+async function userDeleteMsg(msgId) {
+  const msgs = getMyMessages();
+  if (!msgs[msgId]) return;
+
+  if (!confirm('Hapus pesan ini?')) return;
+
+  const btn = document.querySelector(`#user-del-${msgId} button`);
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(`/api/user_delete/${msgId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: msgs[msgId].token })
+    });
+    
+    if (res.ok) {
+      // Remove from localStorage
+      delete msgs[msgId];
+      localStorage.setItem('fgfess_my_msgs', JSON.stringify(msgs));
+      
+      // Remove from screen
+      const card = document.getElementById(`msg-${msgId}`) || document.getElementById(`reply-${msgId}`);
+      if (card) {
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 300);
+      }
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Gagal menghapus pesan.');
+    }
+  } catch (e) {
+    alert('Gagal menghapus pesan.');
+  }
+  if (btn) btn.disabled = false;
+}
+
+function updateDeleteCountdowns() {
+  const msgs = getMyMessages();
+  const now = Date.now();
+  let changed = false;
+
+  for (const id in msgs) {
+    const item = msgs[id];
+    const container = document.getElementById(`user-del-${id}`);
+
+    if (now > item.expires) {
+      delete msgs[id];
+      changed = true;
+      if (container) container.innerHTML = '';
+    } else {
+      if (container) {
+        const secs = Math.ceil((item.expires - now) / 1000);
+        if (!container.innerHTML) {
+          container.innerHTML = `<button class="btn-user-delete" onclick="userDeleteMsg(${id})" title="Hapus pesan (tersedia 1 menit)">Hapus (${secs}s)</button>`;
+        } else {
+          const btn = container.querySelector('button');
+          if (btn) btn.textContent = `Hapus (${secs}s)`;
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    localStorage.setItem('fgfess_my_msgs', JSON.stringify(msgs));
+  }
+}
+
+// Run countdown every second
+setInterval(updateDeleteCountdowns, 1000);
+// Initial run on load
+updateDeleteCountdowns();
 
 // ─── Start Polling (page 1 only) ─────────────────────────────────────────────
 

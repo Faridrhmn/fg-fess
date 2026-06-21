@@ -87,6 +87,7 @@ class Message(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     is_hidden = db.Column(db.Boolean, default=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
+    secret_token = db.Column(db.String(36), nullable=True)  # For 1-minute delete feature
 
     # Relationships
     replies   = db.relationship('Message',
@@ -139,7 +140,9 @@ def submit_message():
         if not parent or parent.is_hidden or parent.parent_id is not None:
             return jsonify({'error': 'Pesan induk tidak valid.'}), 400
 
-    new_msg = Message(content=content, parent_id=parent_id if parent_id else None)
+    import uuid
+    secret_token = str(uuid.uuid4())
+    new_msg = Message(content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token)
     db.session.add(new_msg)
     db.session.commit()
 
@@ -157,9 +160,30 @@ def submit_message():
             'date_key':    fmt_date_key(new_msg.timestamp),
             'date_label':  fmt_date_id(new_msg.timestamp),
             'reply_count': 0,
+            'secret_token': secret_token,
+            'timestamp_ms': int(new_msg.timestamp.timestamp() * 1000)
         }
     }
     return jsonify(resp)
+
+@app.route('/api/user_delete/<int:msg_id>', methods=['POST'])
+def user_delete_message(msg_id):
+    """Allow user to delete their own message within 1 minute."""
+    data = request.get_json()
+    token = data.get('token')
+    
+    msg = Message.query.get_or_404(msg_id)
+    
+    if not token or msg.secret_token != token:
+        return jsonify({'error': 'Tidak ada akses.'}), 403
+        
+    age = (datetime.datetime.utcnow() - msg.timestamp).total_seconds()
+    if age > 60:
+        return jsonify({'error': 'Waktu untuk menghapus (1 menit) sudah habis.'}), 400
+        
+    db.session.delete(msg)
+    db.session.commit()
+    return jsonify({'success': True})
 
 @app.route('/api/messages')
 def get_messages():
@@ -172,6 +196,7 @@ def get_messages():
 
     msgs  = query.order_by(Message.timestamp.desc()).all()
     total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
+    visible_ids = [m[0] for m in db.session.query(Message.id).filter_by(is_hidden=False).all()]
 
     return jsonify({
         'messages': [
@@ -185,7 +210,8 @@ def get_messages():
             }
             for m in msgs
         ],
-        'total': total
+        'total': total,
+        'visible_ids': visible_ids
     })
 
 
@@ -328,12 +354,15 @@ with app.app_context():
         conn.execute(text('PRAGMA synchronous=NORMAL'))
         conn.execute(text('PRAGMA cache_size=-16000'))  # ~16MB cache
 
-        # Migrasi: tambah kolom parent_id jika belum ada (untuk DB yang sudah ada)
+        # Migrasi: tambah kolom parent_id & secret_token
         inspector = inspect(db.engine)
         existing_cols = [c['name'] for c in inspector.get_columns('message')]
         if 'parent_id' not in existing_cols:
             conn.execute(text('ALTER TABLE message ADD COLUMN parent_id INTEGER REFERENCES message(id)'))
             print('[Migration] Added parent_id column to message table.')
+        if 'secret_token' not in existing_cols:
+            conn.execute(text('ALTER TABLE message ADD COLUMN secret_token VARCHAR(36)'))
+            print('[Migration] Added secret_token column to message table.')
 
         conn.commit()
 
