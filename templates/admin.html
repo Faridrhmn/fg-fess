@@ -54,7 +54,7 @@
         <div class="admin-card {% if msg.is_hidden %}is-hidden{% endif %}" id="admin-msg-{{ msg.id }}">
           <div class="admin-card-body">
             <p class="admin-msg-text">{{ msg.content }}</p>
-            <time class="admin-msg-time">{{ msg.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ msg.id }}</time>
+            <time class="admin-msg-time">{{ msg.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ msg.id }} {% if msg.location and msg.location != 'Tidak diketahui' %}· 📍 {{ msg.location }}{% endif %}</time>
           </div>
           <div class="admin-card-actions">
             <button
@@ -139,6 +139,70 @@
         updateStats(data.stats);
       }
     }
+
+    // ─── Real-time Polling for Admin ──────────────────────────────────────────
+    let latestId = {{ messages.items[0].id if messages.items else 0 }};
+    const urlParams = new URLSearchParams(window.location.search);
+    const page = urlParams.get('page');
+    const filterMode = urlParams.get('filter') || 'all';
+
+    function buildAdminCard(msg) {
+      const loc = msg.location && msg.location !== 'Tidak diketahui' ? `· 📍 ${msg.location}` : '';
+      const hiddenClass = msg.is_hidden ? 'is-hidden' : '';
+      const btnTitle = msg.is_hidden ? 'Tampilkan' : 'Sembunyikan';
+      const btnIcon = msg.is_hidden 
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Tampilkan</span>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><span>Sembunyikan</span>`;
+      
+      const safeContent = msg.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      return `
+        <div class="admin-card ${hiddenClass} new-card" id="admin-msg-${msg.id}" style="animation: fade-in 0.3s ease-out">
+          <div class="admin-card-body">
+            <p class="admin-msg-text">${safeContent}</p>
+            <time class="admin-msg-time">${msg.time} · ID #${msg.id} ${loc}</time>
+          </div>
+          <div class="admin-card-actions">
+            <button class="action-btn btn-toggle" onclick="toggleMessage(${msg.id}, this)" title="${btnTitle}">
+              ${btnIcon}
+            </button>
+            <button class="action-btn btn-delete" onclick="deleteMessage(${msg.id})" title="Hapus Permanen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              <span>Hapus</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (!page || page === '1') {
+      setInterval(async () => {
+        try {
+          const res = await fetch(`/api/admin/messages?since=${latestId}&filter=${filterMode}`);
+          const data = await res.json();
+          
+          if (data.messages && data.messages.length > 0) {
+            const feed = document.querySelector('.admin-feed');
+            const empty = feed.querySelector('.empty-state');
+            if (empty) empty.remove();
+
+            // Insert from oldest to newest so they stack correctly at the top
+            data.messages.slice().reverse().forEach(msg => {
+              if (msg.id > latestId) latestId = msg.id;
+              feed.insertAdjacentHTML('afterbegin', buildAdminCard(msg));
+            });
+            
+            if (data.stats) updateStats(data.stats);
+          }
+        } catch (e) {}
+      }, 5000);
+    }
   </script>
+  <style>
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
 </body>
 </html>

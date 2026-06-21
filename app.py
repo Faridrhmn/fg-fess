@@ -5,6 +5,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 import datetime
 import os
+import urllib.request
+import json
+import uuid
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -81,13 +84,18 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
 
+def get_wib_time():
+    """Returns the current time in WIB (UTC+7)."""
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+
 class Message(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
     content   = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=get_wib_time)
     is_hidden = db.Column(db.Boolean, default=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
     secret_token = db.Column(db.String(36), nullable=True)  # For 1-minute delete feature
+    location = db.Column(db.String(100), default="Tidak diketahui")
 
     # Relationships
     replies   = db.relationship('Message',
@@ -116,6 +124,19 @@ def index():
         .paginate(page=page, per_page=per_page, error_out=False)
     return render_template('index.html', messages=messages)
 
+def get_city_from_ip(ip):
+    if ip in ('127.0.0.1', 'localhost', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
+        return "Lokal"
+    try:
+        req = urllib.request.Request(f'http://ip-api.com/json/{ip}?fields=city', headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=2) as response:
+            data = json.loads(response.read().decode())
+            if data.get('city'):
+                return data['city']
+    except Exception:
+        pass
+    return "Tidak diketahui"
+
 @app.route('/api/submit', methods=['POST'])
 def submit_message():
     """Submit a new anonymous message to the public board."""
@@ -142,7 +163,9 @@ def submit_message():
 
     import uuid
     secret_token = str(uuid.uuid4())
-    new_msg = Message(content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token)
+    location = get_city_from_ip(client_ip)
+    
+    new_msg = Message(content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token, location=location)
     db.session.add(new_msg)
     db.session.commit()
 
@@ -177,7 +200,7 @@ def user_delete_message(msg_id):
     if not token or msg.secret_token != token:
         return jsonify({'error': 'Tidak ada akses.'}), 403
         
-    age = (datetime.datetime.utcnow() - msg.timestamp).total_seconds()
+    age = (get_wib_time() - msg.timestamp).total_seconds()
     if age > 60:
         return jsonify({'error': 'Waktu untuk menghapus (1 menit) sudah habis.'}), 400
         
@@ -272,6 +295,38 @@ def get_stats():
     return jsonify({'total': total})
 
 # ─── Admin Routes ──────────────────────────────────────────────────────────────
+
+@app.route('/api/admin/messages')
+@login_required
+def admin_api_messages():
+    """Real-time polling for admin dashboard."""
+    since_id = request.args.get('since', 0, type=int)
+    filter_mode = request.args.get('filter', 'all')
+    
+    query = Message.query.filter(Message.id > since_id)
+    if filter_mode == 'visible':
+        query = query.filter_by(is_hidden=False)
+    elif filter_mode == 'hidden':
+        query = query.filter_by(is_hidden=True)
+        
+    msgs = query.order_by(Message.timestamp.desc()).all()
+    
+    return jsonify({
+        'messages': [
+            {
+                'id': m.id,
+                'content': m.content,
+                'time': m.timestamp.strftime('%d %b %Y, %H:%M'),
+                'is_hidden': m.is_hidden,
+                'location': m.location
+            } for m in msgs
+        ],
+        'stats': {
+            'total': Message.query.count(),
+            'visible': Message.query.filter_by(is_hidden=False).count(),
+            'hidden': Message.query.filter_by(is_hidden=True).count()
+        }
+    })
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -395,6 +450,9 @@ with app.app_context():
         if 'secret_token' not in existing_cols:
             conn.execute(text('ALTER TABLE message ADD COLUMN secret_token VARCHAR(36)'))
             print('[Migration] Added secret_token column to message table.')
+        if 'location' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN location VARCHAR(100) DEFAULT 'Tidak diketahui'"))
+            print('[Migration] Added location column to message table.')
 
         conn.commit()
 
