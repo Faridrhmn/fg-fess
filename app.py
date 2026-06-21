@@ -128,11 +128,25 @@ def get_city_from_ip(ip):
     if ip in ('127.0.0.1', 'localhost', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
         return "Lokal"
     try:
-        req = urllib.request.Request(f'http://ip-api.com/json/{ip}?fields=city', headers={'User-Agent': 'Mozilla/5.0'})
+        req = urllib.request.Request(f'http://ip-api.com/json/{ip}?fields=city,regionName,isp', headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=2) as response:
             data = json.loads(response.read().decode())
+            
+            parts = []
             if data.get('city'):
-                return data['city']
+                parts.append(data['city'])
+            if data.get('regionName') and data.get('regionName') != data.get('city'):
+                parts.append(data['regionName'])
+                
+            loc = ", ".join(parts) if parts else ""
+            isp = data.get('isp', '')
+            
+            if loc and isp:
+                return f"{loc} - {isp}"
+            elif loc:
+                return loc
+            elif isp:
+                return isp
     except Exception:
         pass
     return "Tidak diketahui"
