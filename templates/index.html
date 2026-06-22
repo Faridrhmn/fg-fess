@@ -76,14 +76,6 @@
       {# Determine the current page to only show live indicator on page 1 #}
       {% set current_page = request.args.get('page', 1) | int %}
 
-      {% if current_page == 1 %}
-      <div id="liveIndicator" class="live-indicator hidden">
-        <span class="live-dot"></span>
-        <span id="newMsgCount">0</span> pesan baru —
-        <button onclick="loadNewMessages()" class="live-load-btn">Tampilkan</button>
-      </div>
-      {% endif %}
-
       <div class="feed" id="feedContainer" data-page="{{ current_page }}"
         data-latest-id="{{ messages.items[0].id if messages.items else 0 }}">
 

@@ -2,13 +2,10 @@
 
 const feed       = document.getElementById('feedContainer');
 const countEl    = document.getElementById('feedCount');
-const liveBar    = document.getElementById('liveIndicator');
-const newCountEl = document.getElementById('newMsgCount');
 
 // Current page — polling only runs on page 1
 const currentPage  = feed ? parseInt(feed.dataset.page || '1') : 1;
 let latestId        = feed ? parseInt(feed.dataset.latestId || '0') : 0;
-let pendingMsgs     = []; // buffer for new messages while user hasn't clicked "Tampilkan"
 let pollInterval    = null;
 const PER_PAGE      = 20;
 // Parse initial total from text like "15 pesan" → 15
@@ -162,43 +159,22 @@ async function poll() {
 
     if (!data.messages || data.messages.length === 0) return;
 
-    // Filter out any we already know about (either already shown or already in buffer)
-    const newMsgs = data.messages.filter(m => 
-      m.id > latestId && !pendingMsgs.some(p => p.id === m.id)
-    );
+    // Filter out any we already know about
+    const newMsgs = data.messages.filter(m => m.id > latestId);
     
     if (newMsgs.length > 0) {
-      // Add to pending buffer (newest last so we insert in order)
-      pendingMsgs.push(...newMsgs);
+      // Sort ascending so oldest-new goes in first → newest at top
+      newMsgs.sort((a, b) => a.id - b.id);
 
-      // Show the live notification bar
-      if (liveBar && newCountEl) {
-        newCountEl.textContent = pendingMsgs.length;
-        liveBar.classList.remove('hidden');
-      }
+      newMsgs.forEach(msg => {
+        injectMessageCard(msg, true);
+        if (msg.id > latestId) latestId = msg.id;
+      });
     }
 
   } catch (e) {
     // Silently fail — network hiccup
   }
-}
-
-// Called when user clicks "Tampilkan" on the live bar
-function loadNewMessages() {
-  if (!pendingMsgs.length) return;
-
-  // Sort ascending so oldest-new goes in first → newest at top
-  pendingMsgs.sort((a, b) => a.id - b.id);
-
-  pendingMsgs.forEach(msg => {
-    injectMessageCard(msg, false);
-    if (msg.id > latestId) latestId = msg.id;
-  });
-
-  pendingMsgs = [];
-
-  // Hide live bar
-  if (liveBar) liveBar.classList.add('hidden');
 }
 
 // ─── Card Injection Helper ────────────────────────────────────────────────────
