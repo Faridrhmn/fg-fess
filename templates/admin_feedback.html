@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Feedback — fg/fess</title>
+  <link rel="icon" href="/static/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* Override admin-card to column layout for feedback cards */
+    .admin-card {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      justify-content: flex-start !important;
+      gap: 12px;
+      width: 100% !important;
+    }
+
+    .admin-card.is-hidden {
+      opacity: 0.6;
+      background: var(--bg);
+    }
+
+    .admin-msg-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+
+    .admin-msg-time {
+      font-size: 0.8rem;
+      color: var(--text-muted, var(--text-3));
+      margin-top: 4px;
+    }
+
+    .admin-card-actions {
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      flex-shrink: unset;
+    }
+
+    .admin-reply-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      resize: vertical;
+      min-height: 80px;
+      display: block;
+    }
+
+    .admin-reply-input:focus {
+      outline: none;
+      border-color: var(--primary, var(--border-2));
+    }
+
+    .reply-form {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 8px;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      background: rgba(26, 26, 24, 0.03);
+      padding: 12px;
+      border-radius: 6px;
+      border-left: 3px solid var(--border-2);
+    }
+
+    .main-layout {
+      max-width: 860px;
+    }
+
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="logo">
+        <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
+        <span class="admin-badge">admin</span>
+      </div>
+      <div class="header-actions">
+        <a href="/admin" class="btn-outline-sm">Messages</a>
+        <a href="/admin/feedback" class="btn-outline-sm"
+          style="background: var(--surface); border-color: var(--primary); color: var(--primary);">Feedback</a>
+        <a href="/" class="btn-outline-sm" target="_blank">Lihat Board</a>
+        <a href="/logout" class="btn-outline-sm btn-danger-outline">Logout</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-layout">
+    <div class="admin-header">
+      <div>
+        <h2>Feedback & Bugs</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 4px;">Atur dan balas keluhan pengguna</p>
+      </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="filter-tabs" style="margin-top: 16px;">
+      <a href="/admin/feedback?filter=all" class="tab-btn {% if filter_mode == 'all' %}active{% endif %}">Semua</a>
+      <a href="/admin/feedback?filter=visible"
+        class="tab-btn {% if filter_mode == 'visible' %}active{% endif %}">Publik</a>
+      <a href="/admin/feedback?filter=hidden"
+        class="tab-btn {% if filter_mode == 'hidden' %}active{% endif %}">Tersembunyi</a>
+    </div>
+
+    <div class="admin-feed">
+      {% if feedbacks.items %}
+      {% for fb in feedbacks.items %}
+      <div class="admin-card {% if fb.is_hidden %}is-hidden{% endif %}" id="fb-{{ fb.id }}">
+        <p class="admin-msg-text">{{ fb.content }}</p>
+        <time class="admin-msg-time">{{ fb.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ fb.id }} {% if fb.location
+          and fb.location != 'Tidak diketahui' %}· 📍 {{ fb.location }}{% endif %}</time>
+
+        <div class="reply-form">
+          <textarea id="reply-input-{{ fb.id }}" class="admin-reply-input"
+            placeholder="Tulis balasan admin...">{{ fb.admin_reply or '' }}</textarea>
+          <div style="display: flex; justify-content: flex-end;">
+            <button class="action-btn" onclick="saveReply({{ fb.id }})"
+              style="border-color: var(--primary); color: var(--primary);">Simpan Balasan</button>
+          </div>
+          {% if fb.admin_reply_timestamp %}
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Dibalas pada: {{
+            fb.admin_reply_timestamp.strftime('%d %b %Y, %H:%M') }}</span>
+          {% endif %}
+        </div>
+
+        <div class="admin-card-actions">
+          <button class="action-btn btn-toggle" onclick="toggleFb({{ fb.id }}, this)"
+            title="{% if fb.is_hidden %}Tampilkan{% else %}Sembunyikan{% endif %}">
+            {% if fb.is_hidden %}
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span>Tampilkan</span>
+            {% else %}
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+            <span>Sembunyikan</span>
+            {% endif %}
+          </button>
+          <button class="action-btn btn-delete" onclick="deleteFb({{ fb.id }})" title="Hapus Permanen">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>
+            <span>Hapus</span>
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty-state">
+        <p>Tidak ada feedback di filter ini.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Pagination -->
+    {% if feedbacks.pages > 1 %}
+    <div class="pagination" style="margin-top: 24px; display: flex; justify-content: center; gap: 16px;">
+      {% if feedbacks.has_prev %}
+      <a href="/admin/feedback?filter={{ filter_mode }}&page={{ feedbacks.prev_num }}" class="page-btn">← Sebelumnya</a>
+      {% endif %}
+      <span class="page-info">{{ feedbacks.page }} / {{ feedbacks.pages }}</span>
+      {% if feedbacks.has_next %}
+      <a href="/admin/feedback?filter={{ filter_mode }}&page={{ feedbacks.next_num }}" class="page-btn">Berikutnya →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </main>
+
+  <script>
+    function showConfirm(msg) {
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.innerHTML = `
+          <div class="confirm-box">
+            <div class="confirm-icon">🗑️</div>
+            <div class="confirm-title">Konfirmasi Hapus</div>
+            <div class="confirm-msg">${msg}</div>
+            <div class="confirm-actions">
+              <button class="confirm-cancel" id="confirmCancel">Batal</button>
+              <button class="confirm-ok" id="confirmOk">Ya, Hapus</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#confirmOk').onclick = () => { overlay.remove(); resolve(true); };
+        overlay.querySelector('#confirmCancel').onclick = () => { overlay.remove(); resolve(false); };
+        overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(false); } });
+      });
+    }
+
+    function showToast(msg, type = 'success') {
+      const t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:999;padding:10px 18px;
+        border-radius:8px;font-size:0.85rem;font-weight:500;color:#fff;
+        background:${type === 'success' ? 'var(--primary)' : 'var(--danger)'};
+        box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .3s;`;
+      document.body.appendChild(t);
+      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+    }
+
+    async function saveReply(id) {
+      const input = document.getElementById('reply-input-' + id);
+      const reply = input.value.trim();
+      const res = await fetch('/admin/feedback/reply/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Balasan disimpan!');
+      } else {
+        showToast('Gagal menyimpan.', 'error');
+      }
+    }
+
+    async function toggleFb(id, btn) {
+      const card = document.getElementById('fb-' + id);
+      const res = await fetch('/admin/feedback/toggle/' + id, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const isHidden = data.is_hidden;
+        card.classList.toggle('is-hidden', isHidden);
+        btn.innerHTML = isHidden
+          ? `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Tampilkan</span>`
+          : `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><span>Sembunyikan</span>`;
+        btn.title = isHidden ? 'Tampilkan' : 'Sembunyikan';
+        showToast(isHidden ? 'Laporan disembunyikan.' : 'Laporan ditampilkan.');
+      }
+    }
+
+    async function deleteFb(id) {
+      const confirmed = await showConfirm('Hapus laporan ini secara permanen? Tindakan ini tidak bisa dibatalkan.');
+      if (!confirmed) return;
+      const res = await fetch('/admin/feedback/delete/' + id, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const card = document.getElementById('fb-' + id);
+        card.style.cssText += 'opacity:0;transform:translateX(20px);transition:opacity .3s,transform .3s;';
+        setTimeout(() => card.remove(), 300);
+        showToast('Laporan dihapus.');
+      }
+    }
+  </script>
+</body>
+
+</html>

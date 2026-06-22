@@ -72,6 +72,23 @@ def is_rate_limited(ip):
     _rate_limit_store[ip] = timestamps
     return False
 
+_feedback_rate_limit_store = {}
+_FEEDBACK_RATE_LIMIT = 3
+_FEEDBACK_RATE_WINDOW = 86400  # 24 jam dalam detik
+
+def is_feedback_rate_limited(ip):
+    now = datetime.datetime.utcnow().timestamp()
+    window_start = now - _FEEDBACK_RATE_WINDOW
+    timestamps = _feedback_rate_limit_store.get(ip, [])
+    # Buang timestamps di luar window
+    timestamps = [t for t in timestamps if t > window_start]
+    if len(timestamps) >= _FEEDBACK_RATE_LIMIT:
+        _feedback_rate_limit_store[ip] = timestamps
+        return True
+    timestamps.append(now)
+    _feedback_rate_limit_store[ip] = timestamps
+    return False
+
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -106,6 +123,16 @@ class Message(db.Model):
     @property
     def visible_reply_count(self):
         return self.replies.filter_by(is_hidden=False).count()
+
+
+class Feedback(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=get_wib_time)
+    location = db.Column(db.String(100), default="Tidak diketahui")
+    admin_reply = db.Column(db.Text, nullable=True)
+    admin_reply_timestamp = db.Column(db.DateTime, nullable=True)
+    is_hidden = db.Column(db.Boolean, default=False)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -419,6 +446,94 @@ def toggle_message(msg_id):
             'hidden':  total_hidden,
         }
     })
+
+# ─── Feedback Routes ──────────────────────────────────────────────────────────
+
+@app.route('/feedback')
+def feedback_board():
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    feedbacks = Feedback.query.filter_by(is_hidden=False)\
+        .order_by(Feedback.timestamp.desc())\
+        .paginate(page=page, per_page=per_page, error_out=False)
+    return render_template('feedback.html', feedbacks=feedbacks)
+
+@app.route('/api/submit_feedback', methods=['POST'])
+def submit_feedback():
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    if is_feedback_rate_limited(client_ip):
+        return jsonify({'error': 'Batas maksimal 5 laporan bug/fitur per hari. Silakan coba lagi besok.'}), 429
+        
+    data = request.get_json()
+    content = data.get('content', '').strip()
+    if not content:
+        return jsonify({'error': 'Pesan tidak boleh kosong.'}), 400
+        
+    location = get_city_from_ip(client_ip)
+    
+    new_fb = Feedback(content=content, location=location)
+    db.session.add(new_fb)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'feedback': {
+            'id': new_fb.id,
+            'content': new_fb.content,
+            'timestamp_ms': int(new_fb.timestamp.timestamp() * 1000),
+        }
+    })
+
+@app.route('/admin/feedback')
+@login_required
+def admin_feedback():
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    filter_mode = request.args.get('filter', 'all')
+
+    query = Feedback.query
+    if filter_mode == 'hidden':
+        query = query.filter_by(is_hidden=True)
+    elif filter_mode == 'visible':
+        query = query.filter_by(is_hidden=False)
+        
+    feedbacks = query.order_by(Feedback.timestamp.desc())\
+        .paginate(page=page, per_page=per_page, error_out=False)
+        
+    return render_template('admin_feedback.html', feedbacks=feedbacks, filter_mode=filter_mode)
+
+@app.route('/admin/feedback/reply/<int:fb_id>', methods=['POST'])
+@login_required
+def admin_reply_feedback(fb_id):
+    fb = Feedback.query.get_or_404(fb_id)
+    data = request.get_json()
+    reply_content = data.get('reply', '').strip()
+    
+    if reply_content:
+        fb.admin_reply = reply_content
+        fb.admin_reply_timestamp = get_wib_time()
+    else:
+        fb.admin_reply = None
+        fb.admin_reply_timestamp = None
+        
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/feedback/toggle/<int:fb_id>', methods=['POST'])
+@login_required
+def toggle_feedback(fb_id):
+    fb = Feedback.query.get_or_404(fb_id)
+    fb.is_hidden = not fb.is_hidden
+    db.session.commit()
+    return jsonify({'success': True, 'is_hidden': fb.is_hidden})
+
+@app.route('/admin/feedback/delete/<int:fb_id>', methods=['POST'])
+@login_required
+def delete_feedback(fb_id):
+    fb = Feedback.query.get_or_404(fb_id)
+    db.session.delete(fb)
+    db.session.commit()
+    return jsonify({'success': True})
 
 @app.route('/logout')
 @login_required

@@ -17,6 +17,8 @@
         <span class="admin-badge">admin</span>
       </div>
       <div class="header-actions">
+        <a href="/admin" class="btn-outline-sm" style="background: var(--surface); border-color: var(--primary); color: var(--primary);">Messages</a>
+        <a href="/admin/feedback" class="btn-outline-sm">Feedback</a>
         <a href="/" class="btn-outline-sm" target="_blank">Lihat Board</a>
         <a href="/logout" class="btn-outline-sm btn-danger-outline">Logout</a>
       </div>
@@ -111,6 +113,38 @@
       document.getElementById('statHidden').textContent  = stats.hidden;
     }
 
+    function showToast(msg, type = 'success') {
+      const t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:999;padding:10px 18px;
+        border-radius:8px;font-size:0.85rem;font-weight:500;color:#fff;
+        background:${type === 'success' ? 'var(--text)' : 'var(--danger)'};
+        box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .3s;`;
+      document.body.appendChild(t);
+      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+    }
+
+    function showConfirm(msg) {
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.innerHTML = `
+          <div class="confirm-box">
+            <div class="confirm-icon">🗑️</div>
+            <div class="confirm-title">Konfirmasi Hapus</div>
+            <div class="confirm-msg">${msg}</div>
+            <div class="confirm-actions">
+              <button class="confirm-cancel" id="confirmCancel">Batal</button>
+              <button class="confirm-ok" id="confirmOk">Ya, Hapus</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#confirmOk').onclick = () => { overlay.remove(); resolve(true); };
+        overlay.querySelector('#confirmCancel').onclick = () => { overlay.remove(); resolve(false); };
+        overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(false); } });
+      });
+    }
+
     async function toggleMessage(id, btn) {
       const card = document.getElementById('admin-msg-' + id);
       const res  = await fetch('/admin/toggle/' + id, { method: 'POST' });
@@ -127,7 +161,8 @@
     }
 
     async function deleteMessage(id) {
-      if (!confirm('Hapus pesan ini secara permanen?')) return;
+      const confirmed = await showConfirm('Hapus pesan ini secara permanen? Tindakan ini tidak bisa dibatalkan.');
+      if (!confirmed) return;
       const res  = await fetch('/admin/delete/' + id, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
@@ -137,6 +172,7 @@
         card.style.transition = 'opacity .3s, transform .3s';
         setTimeout(() => card.remove(), 300);
         updateStats(data.stats);
+        showToast('Pesan dihapus.');
       }
     }
 

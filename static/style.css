@@ -966,3 +966,99 @@ a { color: inherit; text-decoration: none; }
   .action-btn span { display: none; }
   .action-btn { padding: 7px 9px; }
 }
+
+/* ─── Confirm Modal ────────────────────────────────────────────────────────── */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.confirm-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 28px 24px;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.08);
+  animation: scaleIn 0.18s ease;
+  text-align: center;
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.93); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.confirm-icon {
+  font-size: 2rem;
+  margin-bottom: 12px;
+  line-height: 1;
+}
+
+.confirm-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.confirm-msg {
+  font-size: 0.875rem;
+  color: var(--text-2);
+  line-height: 1.55;
+  margin-bottom: 20px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.confirm-cancel {
+  flex: 1;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.confirm-cancel:hover {
+  background: var(--border);
+  border-color: var(--border-2);
+}
+
+.confirm-ok {
+  flex: 1;
+  padding: 9px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.confirm-ok:hover { opacity: 0.88; }

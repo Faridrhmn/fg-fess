@@ -11,6 +11,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .nav-links { display: flex; gap: 4px; }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); background: var(--surface); }
+    .nav-links a.active { color: var(--primary); background: rgba(19,141,130,0.1); }
+  </style>
 </head>
 
 <body>
@@ -18,9 +32,14 @@
   <header class="site-header">
     <div class="container header-inner">
       <div class="logo">
-        <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
+        <a href="/" style="text-decoration: none; color: inherit;">
+          <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
+        </a>
       </div>
-      <span class="header-tagline">gedebog gedang</span>
+      <nav class="nav-links">
+        <a href="/" class="active">Board Utama</a>
+        <a href="/feedback">Bug &amp; Fitur</a>
+      </nav>
     </div>
   </header>
 

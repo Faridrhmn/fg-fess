@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bug & Fitur — fg/fess</title>
+  <meta name="description" content="Sampaikan keluhan bug atau request fitur kepada admin fg/fess." />
+  <link rel="icon" href="/static/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .admin-reply-box {
+      margin-top: 12px;
+      padding: 12px 14px;
+      background: rgba(19, 141, 130, 0.08);
+      border-left: 3px solid var(--primary);
+      border-radius: 0 6px 6px 0;
+      font-size: 0.875rem;
+    }
+    .admin-reply-header {
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .admin-reply-time {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.75rem;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .admin-reply-content {
+      color: var(--text);
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .nav-links {
+      display: flex;
+      gap: 4px;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .nav-links a:hover {
+      color: var(--text);
+      background: var(--surface);
+    }
+    .nav-links a.active {
+      color: var(--primary);
+      background: rgba(19, 141, 130, 0.1);
+    }
+    .fb-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .fb-card-type {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .fb-card-text {
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .fb-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .feed-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .feed-section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .feed-section-count {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: var(--bg);
+      padding: 3px 10px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+    }
+    .feedback-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .submit-feedback-inline {
+      font-size: 0.8rem;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-weight: 500;
+      border: none;
+      cursor: default;
+      display: none;
+    }
+    .submit-feedback-inline.success {
+      background: rgba(19, 141, 130, 0.12);
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .submit-feedback-inline.error {
+      background: rgba(220, 38, 38, 0.1);
+      color: var(--danger);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="logo">
+        <a href="/" style="text-decoration: none; color: inherit;">
+          <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
+        </a>
+      </div>
+      <nav class="nav-links">
+        <a href="/">Board Utama</a>
+        <a href="/feedback" class="active">Bug & Fitur</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container main-layout">
+    <!-- Compose Box -->
+    <section class="compose-card" id="compose">
+      <div class="compose-header">
+        <span class="compose-label">Lapor Bug / Request Fitur</span>
+        <span class="char-counter" id="charCounter">0 / 1000</span>
+      </div>
+      <textarea id="feedbackInput" class="compose-textarea"
+        placeholder="Ada kendala saat memakai aplikasi? Atau punya ide fitur baru? Ceritakan disini…" maxlength="1000"
+        rows="4"></textarea>
+      <div class="compose-footer">
+        <p class="compose-note">Laporanmu terlihat publik. Hanya Admin yang bisa membalas. <kbd>Ctrl+Enter</kbd> untuk kirim.</p>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="submit-feedback-inline" id="fbStatus"></span>
+          <button id="submitFbBtn" class="btn-send" onclick="submitFeedback()">
+            <span class="btn-text">Kirim</span>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feed -->
+    <section class="feed-section">
+      <div class="feed-section-header">
+        <h1 class="feed-section-title">Laporan & Request</h1>
+        <span class="feed-section-count" id="fbCount">{{ feedbacks.total }} laporan</span>
+      </div>
+
+      <div class="feedback-list" id="feedbackList">
+        {% if feedbacks.items %}
+          {% for fb in feedbacks.items %}
+          <div class="fb-card" id="fbc-{{ fb.id }}">
+            <p class="fb-card-text">{{ fb.content }}</p>
+            <div class="fb-card-meta">
+              <time class="message-time" style="margin: 0;">{{ fb.timestamp.strftime('%d %b %Y, %H:%M') }}</time>
+            </div>
+            {% if fb.admin_reply %}
+            <div class="admin-reply-box">
+              <div class="admin-reply-header">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Balasan Admin
+                <span class="admin-reply-time">· {{ fb.admin_reply_timestamp.strftime('%d %b %Y, %H:%M') }}</span>
+              </div>
+              <div class="admin-reply-content">{{ fb.admin_reply }}</div>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state" id="emptyState">
+            <p>Belum ada laporan atau request fitur. Jadilah yang pertama!</p>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Pagination -->
+      {% if feedbacks.pages > 1 %}
+      <div class="pagination">
+        {% if feedbacks.has_prev %}
+          <a href="/feedback?page={{ feedbacks.prev_num }}" class="page-btn">← Sebelumnya</a>
+        {% endif %}
+        <span class="page-info">{{ feedbacks.page }} / {{ feedbacks.pages }}</span>
+        {% if feedbacks.has_next %}
+          <a href="/feedback?page={{ feedbacks.next_num }}" class="page-btn">Berikutnya →</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+  </main>
+
+  <script>
+    const fbInput = document.getElementById('feedbackInput');
+    const charCounter = document.getElementById('charCounter');
+    const fbStatus = document.getElementById('fbStatus');
+
+    fbInput.addEventListener('input', () => {
+      charCounter.textContent = `${fbInput.value.length} / 1000`;
+    });
+
+    fbInput.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        submitFeedback();
+      }
+    });
+
+    function showStatus(type, msg) {
+      fbStatus.className = `submit-feedback-inline ${type}`;
+      const icon = type === 'success'
+        ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+      fbStatus.innerHTML = `${icon} ${msg}`;
+      if (type === 'success') setTimeout(() => fbStatus.style.display = 'none', 3000);
+    }
+
+    function buildFbCard(fb) {
+      const date = new Date(fb.timestamp_ms);
+      const timeStr = date.toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})
+                    + ', ' + date.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'});
+      return `
+        <div class="fb-card" id="fbc-${fb.id}" style="animation: msg-in .3s ease-out;">
+          <p class="fb-card-text">${escHtml(fb.content)}</p>
+          <div class="fb-card-meta">
+            <time class="message-time" style="margin:0;">${timeStr}</time>
+          </div>
+        </div>`;
+    }
+
+    function escHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function submitFeedback() {
+      const content = fbInput.value.trim();
+      if (!content) return;
+
+      const btn = document.getElementById('submitFbBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="btn-text">Mengirim…</span>';
+
+      try {
+        const res = await fetch('/api/submit_feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          const list = document.getElementById('feedbackList');
+          const empty = document.getElementById('emptyState');
+          if (empty) empty.remove();
+
+          list.insertAdjacentHTML('afterbegin', buildFbCard(data.feedback));
+
+          const countEl = document.getElementById('fbCount');
+          if (countEl) {
+            const cur = parseInt(countEl.textContent) || 0;
+            countEl.textContent = `${cur + 1} laporan`;
+          }
+
+          fbInput.value = '';
+          charCounter.textContent = '0 / 1000';
+          showStatus('success', 'Laporan terkirim!');
+        } else {
+          showStatus('error', data.error || 'Gagal mengirim.');
+        }
+      } catch (e) {
+        showStatus('error', 'Kesalahan jaringan.');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span class="btn-text">Kirim</span>
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>`;
+      }
+    }
+  </script>
+</body>
+</html>
