@@ -130,17 +130,21 @@
         </article>
       {% endmacro %}
 
-      {% if pinned_messages and current_page == 1 %}
-      <div class="feed pinned-feed" id="pinnedContainer" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
+      {% if current_page == 1 %}
+      <div class="feed pinned-feed {% if not pinned_messages %}hidden{% endif %}" id="pinnedContainer" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
         <h2 class="section-title" style="font-size: 0.9rem; margin-bottom: 4px; color: var(--warn); display: flex; align-items: center; gap: 6px;">
           <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16">
             <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
           </svg>
           Trending Topics
         </h2>
-        {% for msg in pinned_messages %}
-          {{ render_message(msg) }}
-        {% endfor %}
+        <div id="pinnedMessagesList" style="display: flex; flex-direction: column; gap: 10px;">
+          {% if pinned_messages %}
+            {% for msg in pinned_messages %}
+              {{ render_message(msg) }}
+            {% endfor %}
+          {% endif %}
+        </div>
         <hr style="border: 0; border-top: 1px dashed var(--border-2); margin-top: 14px;">
       </div>
       {% endif %}

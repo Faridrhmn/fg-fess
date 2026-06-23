@@ -127,10 +127,12 @@ async function poll() {
                 </div>
               `);
             }
+            moveCardToCorrectContainer(card, true);
           } else if (!counts.p && card.classList.contains('pinned-message')) {
             card.classList.remove('pinned-message');
             const badge = card.querySelector('.pinned-badge');
             if (badge) badge.remove();
+            moveCardToCorrectContainer(card, false);
           }
         }
       }
@@ -682,6 +684,33 @@ updateDeleteCountdowns();
 
 // ─── Voting Functionality ──────────────────────────────────────────────────────
 
+function moveCardToCorrectContainer(card, isPinned) {
+  const pinnedContainer = document.getElementById('pinnedContainer');
+  const pinnedList = document.getElementById('pinnedMessagesList');
+  const feedContainer = document.getElementById('feedContainer');
+  
+  if (isPinned) {
+    if (pinnedContainer && pinnedList && !pinnedList.contains(card)) {
+      pinnedList.appendChild(card);
+      pinnedContainer.classList.remove('hidden');
+    }
+  } else {
+    // move back to feedContainer
+    if (feedContainer && !feedContainer.contains(card)) {
+      const topSep = feedContainer.querySelector('.date-separator');
+      if (topSep && topSep.nextSibling) {
+        feedContainer.insertBefore(card, topSep.nextSibling);
+      } else {
+        feedContainer.insertBefore(card, feedContainer.firstChild);
+      }
+    }
+    // Hide pinned container if empty
+    if (pinnedContainer && pinnedList && pinnedList.children.length === 0) {
+      pinnedContainer.classList.add('hidden');
+    }
+  }
+}
+
 function initializeVotes() {
   document.querySelectorAll('.message-card').forEach(card => {
     const id = card.dataset.id;
@@ -766,6 +795,7 @@ async function voteMessage(msgId, voteType) {
               </div>
             `);
           }
+          moveCardToCorrectContainer(card, true);
         }
       } else {
         // Unpin if necessary (undone)
@@ -774,6 +804,7 @@ async function voteMessage(msgId, voteType) {
           card.classList.remove('pinned-message');
           const badge = card.querySelector('.pinned-badge');
           if (badge) badge.remove();
+          moveCardToCorrectContainer(card, false);
         }
       }
     } else {
