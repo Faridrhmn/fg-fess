@@ -225,7 +225,7 @@ async function poll() {
 
       // Detect newly unhidden top-level messages
       let oldestId = latestId;
-      document.querySelectorAll('.message-card').forEach(card => {
+      document.querySelectorAll('.message-card:not(.pinned-message)').forEach(card => {
         const cid = parseInt(card.dataset.id);
         if (cid && cid < oldestId) oldestId = cid;
       });

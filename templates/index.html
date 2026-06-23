@@ -95,7 +95,7 @@
     <section class="feed-section">
       <div class="feed-header">
         <h1 class="feed-title">Papan Pesan</h1>
-        <span class="feed-count" id="feedCount">{{ messages.total }} pesan</span>
+        <span class="feed-count" id="feedCount">{{ messages.total + pinned_messages|length }} pesan</span>
       </div>
 
       {# Determine the current page to only show live indicator on page 1 #}
