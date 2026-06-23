@@ -20,3 +20,7 @@ instance/
 # Backup files
 backups.txt
 *.bak
+
+# User Uploads
+static/uploads/*
+!static/uploads/.gitkeep
