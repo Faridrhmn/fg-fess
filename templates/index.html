@@ -76,21 +76,7 @@
       {# Determine the current page to only show live indicator on page 1 #}
       {% set current_page = request.args.get('page', 1) | int %}
 
-      <div class="feed" id="feedContainer" data-page="{{ current_page }}"
-        data-latest-id="{{ messages.items[0].id if messages.items else 0 }}">
-
-        {% if messages.items %}
-        {% set ns = namespace(last_key=None) %}
-        {% for msg in messages.items %}
-        {# Group by date using the tgl_key and tgl_id filters (Indonesian locale) #}
-        {% set day_key = msg.timestamp | tgl_key %}
-        {% if day_key != ns.last_key %}
-        {% set ns.last_key = day_key %}
-        <div class="date-separator" data-date-key="{{ day_key }}">
-          <span class="date-label">{{ msg.timestamp | tgl_id }}</span>
-        </div>
-        {% endif %}
-
+      {% macro render_message(msg) %}
         <article class="message-card {% if msg.is_pinned %}pinned-message{% endif %}" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
           {% if msg.is_pinned %}
           <div class="pinned-badge">
@@ -142,6 +128,39 @@
             </div>
           </div>
         </article>
+      {% endmacro %}
+
+      {% if pinned_messages and current_page == 1 %}
+      <div class="feed pinned-feed" id="pinnedContainer" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
+        <h2 class="section-title" style="font-size: 0.9rem; margin-bottom: 4px; color: var(--warn); display: flex; align-items: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16">
+            <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+          </svg>
+          Trending Topics
+        </h2>
+        {% for msg in pinned_messages %}
+          {{ render_message(msg) }}
+        {% endfor %}
+        <hr style="border: 0; border-top: 1px dashed var(--border-2); margin-top: 14px;">
+      </div>
+      {% endif %}
+
+      <div class="feed" id="feedContainer" data-page="{{ current_page }}"
+        data-latest-id="{{ messages.items[0].id if messages.items else 0 }}">
+
+        {% if messages.items %}
+        {% set ns = namespace(last_key=None) %}
+        {% for msg in messages.items %}
+        {# Group by date using the tgl_key and tgl_id filters (Indonesian locale) #}
+        {% set day_key = msg.timestamp | tgl_key %}
+        {% if day_key != ns.last_key %}
+        {% set ns.last_key = day_key %}
+        <div class="date-separator" data-date-key="{{ day_key }}">
+          <span class="date-label">{{ msg.timestamp | tgl_id }}</span>
+        </div>
+        {% endif %}
+
+        {{ render_message(msg) }}
         {% endfor %}
         {% else %}
         <div class="empty-state" id="emptyState">

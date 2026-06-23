@@ -158,11 +158,17 @@ def index():
             msg.pinned_until = None
         db.session.commit()
 
+    pinned_messages = Message.query\
+        .filter_by(is_hidden=False, is_pinned=True, parent_id=None)\
+        .order_by(Message.upvotes.desc(), Message.timestamp.desc())\
+        .all()
+
     messages = Message.query\
-        .filter_by(is_hidden=False, parent_id=None)\
-        .order_by(Message.is_pinned.desc(), Message.timestamp.desc())\
+        .filter_by(is_hidden=False, is_pinned=False, parent_id=None)\
+        .order_by(Message.timestamp.desc())\
         .paginate(page=page, per_page=per_page, error_out=False)
-    return render_template('index.html', messages=messages)
+    
+    return render_template('index.html', messages=messages, pinned_messages=pinned_messages)
 
 def get_city_from_ip(ip):
     if ip in ('127.0.0.1', 'localhost', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
@@ -261,22 +267,37 @@ def vote_message(msg_id):
     if action == 'undo':
         if vote_type == 'up' and msg.upvotes > 0:
             msg.upvotes -= 1
-            if msg.upvotes < 5 and msg.is_pinned:
+            if msg.upvotes >= 15:
+                msg.is_pinned = True
+                msg.pinned_until = get_wib_time() + datetime.timedelta(days=3)
+            elif msg.upvotes >= 10:
+                msg.is_pinned = True
+                msg.pinned_until = get_wib_time() + datetime.timedelta(days=2)
+            elif msg.upvotes >= 5:
+                msg.is_pinned = True
+                msg.pinned_until = get_wib_time() + datetime.timedelta(days=1)
+            else:
                 msg.is_pinned = False
                 msg.pinned_until = None
         elif vote_type == 'down' and msg.downvotes > 0:
             msg.downvotes -= 1
-            if msg.downvotes < 5 and msg.is_hidden:
+            if msg.downvotes < 20 and msg.is_hidden:
                 msg.is_hidden = False
     else:
         if vote_type == 'up':
             msg.upvotes += 1
-            if msg.upvotes >= 5 and not msg.is_pinned:
+            if msg.upvotes >= 15:
                 msg.is_pinned = True
                 msg.pinned_until = get_wib_time() + datetime.timedelta(days=3)
+            elif msg.upvotes >= 10:
+                msg.is_pinned = True
+                msg.pinned_until = get_wib_time() + datetime.timedelta(days=2)
+            elif msg.upvotes >= 5:
+                msg.is_pinned = True
+                msg.pinned_until = get_wib_time() + datetime.timedelta(days=1)
         elif vote_type == 'down':
             msg.downvotes += 1
-            if msg.downvotes >= 5:
+            if msg.downvotes >= 20:
                 msg.is_hidden = True
 
     db.session.commit()
@@ -324,6 +345,7 @@ def get_messages():
     total = len(all_visible)
     visible_ids = [m.id for m in all_visible]
     reply_counts = {m.id: m.visible_reply_count for m in all_visible}
+    vote_counts = {m.id: {'u': m.upvotes, 'd': m.downvotes, 'p': m.is_pinned} for m in all_visible}
 
     # Also need visible IDs for replies so the client can remove deleted replies
     visible_replies = [m[0] for m in db.session.query(Message.id).filter(Message.is_hidden==False, Message.parent_id.isnot(None)).all()]
@@ -346,7 +368,8 @@ def get_messages():
         'total': total,
         'visible_ids': visible_ids,
         'visible_replies': visible_replies,
-        'reply_counts': reply_counts
+        'reply_counts': reply_counts,
+        'vote_counts': vote_counts
     })
 
 @app.route('/api/messages_by_ids', methods=['POST'])

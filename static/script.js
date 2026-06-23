@@ -104,6 +104,38 @@ async function poll() {
       }
     }
 
+    // Update vote counts and pinned state
+    if (data.vote_counts) {
+      for (const [idStr, counts] of Object.entries(data.vote_counts)) {
+        const upEl = document.getElementById(`upvote-count-${idStr}`);
+        if (upEl) upEl.textContent = counts.u;
+        const downEl = document.getElementById(`downvote-count-${idStr}`);
+        if (downEl) downEl.textContent = counts.d;
+        
+        const card = document.getElementById(`msg-${idStr}`);
+        if (card) {
+          if (counts.p && !card.classList.contains('pinned-message')) {
+            card.classList.add('pinned-message');
+            const p = card.querySelector('.message-text');
+            if (p && !card.querySelector('.pinned-badge')) {
+              p.insertAdjacentHTML('beforebegin', `
+                <div class="pinned-badge">
+                  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
+                    <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+                  </svg>
+                  Trending Topic
+                </div>
+              `);
+            }
+          } else if (!counts.p && card.classList.contains('pinned-message')) {
+            card.classList.remove('pinned-message');
+            const badge = card.querySelector('.pinned-badge');
+            if (badge) badge.remove();
+          }
+        }
+      }
+    }
+
     // Remove top-level cards that are no longer visible
     if (data.visible_ids) {
       const visibleSet = new Set(data.visible_ids);
