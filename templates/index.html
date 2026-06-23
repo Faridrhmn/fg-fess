@@ -91,12 +91,32 @@
         </div>
         {% endif %}
 
-        <article class="message-card" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
+        <article class="message-card {% if msg.is_pinned %}pinned-message{% endif %}" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
+          {% if msg.is_pinned %}
+          <div class="pinned-badge">
+            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
+              <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+            </svg>
+            Trending Topic
+          </div>
+          {% endif %}
           <p class="message-text">{{ msg.content }}</p>
           <div class="message-meta">
             <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
             <div class="meta-actions">
               <span class="user-delete-container" id="user-del-{{ msg.id }}"></span>
+              <button class="vote-btn upvote-btn" onclick="voteMessage({{ msg.id }}, 'up')" id="upvote-{{ msg.id }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                  <path d="M12 19V5M5 12l7-7 7 7"/>
+                </svg>
+                <span id="upvote-count-{{ msg.id }}">{{ msg.upvotes }}</span>
+              </button>
+              <button class="vote-btn downvote-btn" onclick="voteMessage({{ msg.id }}, 'down')" id="downvote-{{ msg.id }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                  <path d="M12 5v14M19 12l-7 7-7-7"/>
+                </svg>
+                <span id="downvote-count-{{ msg.id }}">{{ msg.downvotes }}</span>
+              </button>
               <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />

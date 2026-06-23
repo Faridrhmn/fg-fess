@@ -113,6 +113,10 @@ class Message(db.Model):
     parent_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
     secret_token = db.Column(db.String(36), nullable=True)  # For 1-minute delete feature
     location = db.Column(db.String(100), default="Tidak diketahui")
+    upvotes = db.Column(db.Integer, default=0)
+    downvotes = db.Column(db.Integer, default=0)
+    is_pinned = db.Column(db.Boolean, default=False)
+    pinned_until = db.Column(db.DateTime, nullable=True)
 
     # Relationships
     replies   = db.relationship('Message',
@@ -145,9 +149,18 @@ def index():
     """Public menfess board - shows all visible top-level messages."""
     page = request.args.get('page', 1, type=int)
     per_page = 20
+    
+    # Unpin messages if their pinned_until has expired
+    expired_pins = Message.query.filter(Message.is_pinned == True, Message.pinned_until < get_wib_time()).all()
+    if expired_pins:
+        for msg in expired_pins:
+            msg.is_pinned = False
+            msg.pinned_until = None
+        db.session.commit()
+
     messages = Message.query\
         .filter_by(is_hidden=False, parent_id=None)\
-        .order_by(Message.timestamp.desc())\
+        .order_by(Message.is_pinned.desc(), Message.timestamp.desc())\
         .paginate(page=page, per_page=per_page, error_out=False)
     return render_template('index.html', messages=messages)
 
@@ -224,11 +237,57 @@ def submit_message():
             'date_key':    fmt_date_key(new_msg.timestamp),
             'date_label':  fmt_date_id(new_msg.timestamp),
             'reply_count': 0,
+            'upvotes':     0,
+            'downvotes':   0,
+            'is_pinned':   False,
             'secret_token': secret_token,
             'timestamp_ms': int(new_msg.timestamp.timestamp() * 1000)
         }
     }
     return jsonify(resp)
+
+@app.route('/api/messages/<int:msg_id>/vote', methods=['POST'])
+def vote_message(msg_id):
+    msg = Message.query.get_or_404(msg_id)
+    if msg.is_hidden:
+        return jsonify({'error': 'Pesan tidak ditemukan.'}), 404
+
+    data = request.get_json()
+    vote_type = data.get('type')
+    action = data.get('action', 'vote')
+
+    # Basic tracking with cookie in JS is possible, but here we just process the vote
+    # Ideally would use IP tracking like the rate limiter
+    if action == 'undo':
+        if vote_type == 'up' and msg.upvotes > 0:
+            msg.upvotes -= 1
+            if msg.upvotes < 5 and msg.is_pinned:
+                msg.is_pinned = False
+                msg.pinned_until = None
+        elif vote_type == 'down' and msg.downvotes > 0:
+            msg.downvotes -= 1
+            if msg.downvotes < 5 and msg.is_hidden:
+                msg.is_hidden = False
+    else:
+        if vote_type == 'up':
+            msg.upvotes += 1
+            if msg.upvotes >= 5 and not msg.is_pinned:
+                msg.is_pinned = True
+                msg.pinned_until = get_wib_time() + datetime.timedelta(days=3)
+        elif vote_type == 'down':
+            msg.downvotes += 1
+            if msg.downvotes >= 5:
+                msg.is_hidden = True
+
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'upvotes': msg.upvotes,
+        'downvotes': msg.downvotes,
+        'is_pinned': msg.is_pinned,
+        'is_hidden': msg.is_hidden
+    })
 
 @app.route('/api/user_delete/<int:msg_id>', methods=['POST'])
 def user_delete_message(msg_id):
@@ -278,6 +337,9 @@ def get_messages():
                 'date_key':    fmt_date_key(m.timestamp),
                 'date_label':  fmt_date_id(m.timestamp),
                 'reply_count': m.visible_reply_count,
+                'upvotes':     m.upvotes,
+                'downvotes':   m.downvotes,
+                'is_pinned':   m.is_pinned,
             }
             for m in msgs
         ],
@@ -582,6 +644,18 @@ with app.app_context():
         if 'location' not in existing_cols:
             conn.execute(text("ALTER TABLE message ADD COLUMN location VARCHAR(100) DEFAULT 'Tidak diketahui'"))
             print('[Migration] Added location column to message table.')
+        if 'upvotes' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN upvotes INTEGER DEFAULT 0"))
+            print('[Migration] Added upvotes column to message table.')
+        if 'downvotes' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN downvotes INTEGER DEFAULT 0"))
+            print('[Migration] Added downvotes column to message table.')
+        if 'is_pinned' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN is_pinned BOOLEAN DEFAULT 0"))
+            print('[Migration] Added is_pinned column to message table.')
+        if 'pinned_until' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN pinned_until DATETIME"))
+            print('[Migration] Added pinned_until column to message table.')
 
         conn.commit()
 

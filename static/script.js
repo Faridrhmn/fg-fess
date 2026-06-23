@@ -202,14 +202,41 @@ function injectMessageCard(msg, highlight) {
   // Build card matching the Jinja2 template structure exactly
   const card = document.createElement('article');
   card.className = highlight ? 'message-card new-card' : 'message-card';
+  if (msg.is_pinned) card.classList.add('pinned-message');
   card.id = `msg-${msg.id}`;
   card.dataset.id = msg.id;
+  
+  let pinnedBadge = '';
+  if (msg.is_pinned) {
+    pinnedBadge = `
+      <div class="pinned-badge">
+        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
+          <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+        </svg>
+        Trending Topic
+      </div>
+    `;
+  }
+
   card.innerHTML = `
+    ${pinnedBadge}
     <p class="message-text">${escapeHtml(msg.content)}</p>
     <div class="message-meta">
       <time class="message-time">${msg.time}</time>
       <div class="meta-actions">
         <span class="user-delete-container" id="user-del-${msg.id}"></span>
+        <button class="vote-btn upvote-btn" onclick="voteMessage(${msg.id}, 'up')" id="upvote-${msg.id}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <path d="M12 19V5M5 12l7-7 7 7"/>
+          </svg>
+          <span id="upvote-count-${msg.id}">${msg.upvotes || 0}</span>
+        </button>
+        <button class="vote-btn downvote-btn" onclick="voteMessage(${msg.id}, 'down')" id="downvote-${msg.id}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <path d="M12 5v14M19 12l-7 7-7-7"/>
+          </svg>
+          <span id="downvote-count-${msg.id}">${msg.downvotes || 0}</span>
+        </button>
         <button class="reply-toggle-btn" onclick="toggleReply(${msg.id}, this)" data-open="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="reply-label">${replyLabel}</span>
@@ -246,6 +273,16 @@ function injectMessageCard(msg, highlight) {
 
   if (highlight) {
     setTimeout(() => card.classList.remove('new-card'), 600);
+  }
+  
+  // Re-apply vote states for injected message
+  if (localStorage.getItem(`voted_${msg.id}_up`)) {
+    const btn = card.querySelector('.upvote-btn');
+    if (btn) btn.classList.add('voted-active');
+  }
+  if (localStorage.getItem(`voted_${msg.id}_down`)) {
+    const btn = card.querySelector('.downvote-btn');
+    if (btn) btn.classList.add('voted-active');
   }
 }
 
@@ -328,6 +365,32 @@ function showFeedback(el, type, text) {
   el.textContent = text;
   el.className   = `submit-feedback ${type}`;
   setTimeout(() => { el.className = 'submit-feedback hidden'; }, 4000);
+}
+
+// ─── Toast Notifications ──────────────────────────────────────────────────────
+
+function showToast(message, type = 'info') {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+
+  container.appendChild(toast);
+
+  // Trigger reflow
+  void toast.offsetWidth;
+  toast.classList.add('show');
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // ─── XSS-safe HTML escape ─────────────────────────────────────────────────────
@@ -450,7 +513,7 @@ async function submitReply(msgId) {
     const data = await res.json();
 
     if (!res.ok) {
-      alert(data.error || 'Gagal mengirim balasan.');
+      showToast(data.error || 'Gagal mengirim balasan.', 'error');
       return;
     }
 
@@ -475,7 +538,7 @@ async function submitReply(msgId) {
     updateReplyCount(msgId);
 
   } catch {
-    alert('Gagal mengirim. Coba lagi.');
+    showToast('Gagal mengirim. Coba lagi.', 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Kirim Balasan';
@@ -541,10 +604,10 @@ async function userDeleteMsg(msgId) {
       }
     } else {
       const data = await res.json();
-      alert(data.error || 'Gagal menghapus pesan.');
+      showToast(data.error || 'Gagal menghapus pesan.', 'error');
     }
   } catch (e) {
-    alert('Gagal menghapus pesan.');
+    showToast('Gagal menghapus pesan.', 'error');
   }
   if (btn) btn.disabled = false;
 }
@@ -584,6 +647,110 @@ function updateDeleteCountdowns() {
 setInterval(updateDeleteCountdowns, 1000);
 // Initial run on load
 updateDeleteCountdowns();
+
+// ─── Voting Functionality ──────────────────────────────────────────────────────
+
+function initializeVotes() {
+  document.querySelectorAll('.message-card').forEach(card => {
+    const id = card.dataset.id;
+    if (localStorage.getItem(`voted_${id}_up`)) {
+      const btn = card.querySelector('.upvote-btn');
+      if (btn) btn.classList.add('voted-active');
+    }
+    if (localStorage.getItem(`voted_${id}_down`)) {
+      const btn = card.querySelector('.downvote-btn');
+      if (btn) btn.classList.add('voted-active');
+    }
+  });
+}
+
+// Call once on load
+initializeVotes();
+
+async function voteMessage(msgId, voteType) {
+  try {
+    const isVoted = localStorage.getItem(`voted_${msgId}_${voteType}`);
+    const oppositeType = voteType === 'up' ? 'down' : 'up';
+    const isOppositeVoted = localStorage.getItem(`voted_${msgId}_${oppositeType}`);
+
+    // Jika ingin nge-vote, tapi sebelahnya sudah di-vote, kita undo sebelahnya dulu
+    if (isOppositeVoted && !isVoted) {
+      await fetch(`/api/messages/${msgId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: oppositeType, action: 'undo' })
+      });
+      localStorage.removeItem(`voted_${msgId}_${oppositeType}`);
+      const oppBtn = document.getElementById(`${oppositeType}vote-${msgId}`);
+      if (oppBtn) oppBtn.classList.remove('voted-active');
+    }
+
+    // Basic local check
+    const action = isVoted ? 'undo' : 'vote';
+
+    const res = await fetch(`/api/messages/${msgId}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: voteType, action: action })
+    });
+    const data = await res.json();
+    
+    if (res.ok) {
+      const btn = document.getElementById(`${voteType}vote-${msgId}`);
+      if (action === 'vote') {
+        localStorage.setItem(`voted_${msgId}_${voteType}`, 'true');
+        if (btn) btn.classList.add('voted-active');
+      } else {
+        localStorage.removeItem(`voted_${msgId}_${voteType}`);
+        if (btn) btn.classList.remove('voted-active');
+      }
+      
+      const upEl = document.getElementById(`upvote-count-${msgId}`);
+      if (upEl) upEl.textContent = data.upvotes;
+      
+      const downEl = document.getElementById(`downvote-count-${msgId}`);
+      if (downEl) downEl.textContent = data.downvotes;
+      
+      if (data.is_hidden) {
+        // Remove card
+        const card = document.getElementById(`msg-${msgId}`);
+        if (card) {
+          card.style.opacity = '0';
+          setTimeout(() => card.remove(), 300);
+        }
+      } else if (data.is_pinned) {
+        // Add pinned class and badge if not exists
+        const card = document.getElementById(`msg-${msgId}`);
+        if (card && !card.classList.contains('pinned-message')) {
+          card.classList.add('pinned-message');
+          const p = card.querySelector('.message-text');
+          if (p) {
+            p.insertAdjacentHTML('beforebegin', `
+              <div class="pinned-badge">
+                <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
+                  <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+                </svg>
+                Trending Topic
+              </div>
+            `);
+          }
+        }
+      } else {
+        // Unpin if necessary (undone)
+        const card = document.getElementById(`msg-${msgId}`);
+        if (card && card.classList.contains('pinned-message')) {
+          card.classList.remove('pinned-message');
+          const badge = card.querySelector('.pinned-badge');
+          if (badge) badge.remove();
+        }
+      }
+    } else {
+      showToast(data.error || 'Gagal mengirim vote.', 'error');
+    }
+  } catch (e) {
+    showToast('Terjadi kesalahan. Coba lagi.', 'error');
+  }
+}
 
 // ─── Start Polling (page 1 only) ─────────────────────────────────────────────
 
