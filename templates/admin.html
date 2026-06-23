@@ -42,6 +42,26 @@
       </div>
     </div>
 
+    <!-- Announcement Form -->
+    <div class="compose-card" style="margin-bottom: 8px; padding: 16px;">
+      <div class="compose-header">
+        <span class="compose-label" style="color: var(--warn); display: flex; align-items: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16">
+            <path d="M12 2C10.3431 2 9 3.34315 9 5V5.5H8C6.34315 5.5 5 6.84315 5 8.5V13L3 17H21L19 13V8.5C19 6.84315 17.6569 5.5 16 5.5H15V5C15 3.34315 13.6569 2 12 2ZM12 4C12.5523 4 13 4.44772 13 5V5.5H11V5C11 4.44772 11.4477 4 12 4ZM7 8.5C7 7.94772 7.44772 7.5 8 7.5H16C16.5523 7.5 17 7.94772 17 8.5V13.5279L18.064 15.6557H5.93603L7 13.5279V8.5ZM10 18C10 19.1046 10.8954 20 12 20C13.1046 20 14 19.1046 14 18H10Z"/>
+          </svg>
+          Notifikasi Pembaruan (Aktif 24 Jam)
+        </span>
+      </div>
+      <div id="activeAnnouncementContainer" class="hidden" style="margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+          <p id="activeAnnouncementText" style="font-size: 0.85rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; margin: 0;"></p>
+          <button onclick="deleteAnnouncement()" style="background: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">Hapus</button>
+        </div>
+      </div>
+      <textarea id="announcementInput" class="compose-textarea" placeholder="Tulis pengumuman fitur baru di sini..." rows="2" style="margin-bottom: 10px;"></textarea>
+      <button class="btn-send" onclick="submitAnnouncement()" id="btnAnnouncement" style="width: 100%; justify-content: center;">Kirim Notifikasi</button>
+    </div>
+
     <!-- Filter Tabs -->
     <div class="filter-tabs">
       <a href="/admin?filter=all" class="tab-btn {% if filter_mode == 'all' %}active{% endif %}">Semua</a>
@@ -55,7 +75,25 @@
         {% for msg in messages.items %}
         <div class="admin-card {% if msg.is_hidden %}is-hidden{% endif %}" id="admin-msg-{{ msg.id }}">
           <div class="admin-card-body">
+            {% if msg.reports and msg.reports > 0 %}
+            <div id="report-info-{{ msg.id }}" style="background: rgba(220, 74, 61, 0.1); border: 1px solid var(--danger); padding: 8px; border-radius: var(--radius); margin-bottom: 8px;">
+              <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                <span>⚠️ Dilaporkan ({{ msg.reports }} kali)</span>
+                <button onclick="clearReports({{ msg.id }})" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; cursor: pointer;">Abaikan</button>
+              </div>
+              <ul style="margin: 4px 0 0 20px; font-size: 0.75rem; color: var(--danger);">
+                {% for r in msg.reports_list %}
+                  <li>{{ r.reason }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
             <p class="admin-msg-text">{{ msg.content }}</p>
+            {% if msg.image_filename %}
+            <div style="margin-top: 8px;">
+              <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image" style="max-height: 200px; border-radius: var(--radius); border: 1px solid var(--border);">
+            </div>
+            {% endif %}
             <time class="admin-msg-time">{{ msg.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ msg.id }} {% if msg.location and msg.location != 'Tidak diketahui' %}· 📍 {{ msg.location }}{% endif %}</time>
           </div>
           <div class="admin-card-actions">
@@ -176,6 +214,80 @@
       }
     }
 
+    async function submitAnnouncement() {
+      const input = document.getElementById('announcementInput');
+      const btn = document.getElementById('btnAnnouncement');
+      const content = input.value.trim();
+      
+      if (!content) return;
+      
+      btn.disabled = true;
+      btn.textContent = 'Mengirim...';
+      
+      try {
+        const res = await fetch('/admin/announcement', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          input.value = '';
+          fetchAdminAnnouncement();
+          showToast('Notifikasi berhasil dikirim (aktif 24 jam).', 'success');
+        } else {
+          showToast('Gagal mengirim notifikasi.', 'error');
+        }
+      } catch (e) {
+        showToast('Terjadi kesalahan jaringan.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Kirim Notifikasi';
+      }
+    }
+
+    async function fetchAdminAnnouncement() {
+      try {
+        const res = await fetch('/api/announcement');
+        const data = await res.json();
+        const container = document.getElementById('activeAnnouncementContainer');
+        const textEl = document.getElementById('activeAnnouncementText');
+        if (data.active) {
+          textEl.textContent = data.content;
+          container.classList.remove('hidden');
+        } else {
+          container.classList.add('hidden');
+        }
+      } catch (e) {}
+    }
+    fetchAdminAnnouncement();
+
+    async function deleteAnnouncement() {
+      const confirmed = await showConfirm('Hapus notifikasi aktif saat ini?');
+      if (!confirmed) return;
+      try {
+        const res = await fetch('/admin/announcement/delete', { method: 'POST' });
+        if (res.ok) {
+          fetchAdminAnnouncement();
+          showToast('Notifikasi dihapus.', 'success');
+        }
+      } catch (e) {}
+    }
+
+    async function clearReports(msgId) {
+      const confirmed = await showConfirm('Abaikan laporan untuk pesan ini? Semua data pelaporan akan dihapus.');
+      if (!confirmed) return;
+      try {
+        const res = await fetch(`/admin/messages/${msgId}/clear_reports`, { method: 'POST' });
+        if (res.ok) {
+          const info = document.getElementById(`report-info-${msgId}`);
+          if (info) info.remove();
+          showToast('Laporan diabaikan.', 'success');
+        }
+      } catch (e) {}
+    }
+
     // ─── Real-time Polling for Admin ──────────────────────────────────────────
     let latestId = {{ messages.items[0].id if messages.items else 0 }};
     const urlParams = new URLSearchParams(window.location.search);
@@ -191,11 +303,31 @@
         : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><span>Sembunyikan</span>`;
       
       const safeContent = msg.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const imageHtml = msg.image_filename ? `<div style="margin-top: 8px;"><img src="/static/uploads/${msg.image_filename}" alt="Uploaded Image" style="max-height: 200px; border-radius: var(--radius); border: 1px solid var(--border);"></div>` : '';
+      
+      let reportsHtml = '';
+      if (msg.reports > 0) {
+        let reasons = '';
+        if (msg.report_reasons && msg.report_reasons.length > 0) {
+          reasons = '<ul style="margin: 4px 0 0 20px; font-size: 0.75rem; color: var(--danger);">' + msg.report_reasons.map(r => `<li>${r}</li>`).join('') + '</ul>';
+        }
+        reportsHtml = `
+          <div id="report-info-${msg.id}" style="background: rgba(220, 74, 61, 0.1); border: 1px solid var(--danger); padding: 8px; border-radius: var(--radius); margin-bottom: 8px;">
+            <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+              <span>⚠️ Dilaporkan (${msg.reports} kali)</span>
+              <button onclick="clearReports(${msg.id})" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; cursor: pointer;">Abaikan</button>
+            </div>
+            ${reasons}
+          </div>
+        `;
+      }
 
       return `
         <div class="admin-card ${hiddenClass} new-card" id="admin-msg-${msg.id}" style="animation: fade-in 0.3s ease-out">
           <div class="admin-card-body">
+            ${reportsHtml}
             <p class="admin-msg-text">${safeContent}</p>
+            ${imageHtml}
             <time class="admin-msg-time">${msg.time} · ID #${msg.id} ${loc}</time>
           </div>
           <div class="admin-card-actions">
@@ -229,6 +361,40 @@
             });
             
             if (data.stats) updateStats(data.stats);
+          }
+
+          if (data.reported_updates) {
+            for (const [id, update] of Object.entries(data.reported_updates)) {
+              const cardBody = document.querySelector(`#admin-msg-${id} .admin-card-body`);
+              if (cardBody) {
+                let info = document.getElementById(`report-info-${id}`);
+                
+                if (update.reports > 0) {
+                  let reasons = '';
+                  if (update.report_reasons && update.report_reasons.length > 0) {
+                    reasons = '<ul style="margin: 4px 0 0 20px; font-size: 0.75rem; color: var(--danger);">' + update.report_reasons.map(r => `<li>${r}</li>`).join('') + '</ul>';
+                  }
+                  
+                  const reportsHtml = `
+                    <div id="report-info-${id}" style="background: rgba(220, 74, 61, 0.1); border: 1px solid var(--danger); padding: 8px; border-radius: var(--radius); margin-bottom: 8px;">
+                      <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                        <span>⚠️ Dilaporkan (${update.reports} kali)</span>
+                        <button onclick="clearReports(${id})" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; cursor: pointer;">Abaikan</button>
+                      </div>
+                      ${reasons}
+                    </div>
+                  `;
+                  
+                  if (info) {
+                    info.outerHTML = reportsHtml;
+                  } else {
+                    cardBody.insertAdjacentHTML('afterbegin', reportsHtml);
+                  }
+                } else if (info) {
+                  info.remove();
+                }
+              }
+            }
           }
         } catch (e) {}
       }, 5000);

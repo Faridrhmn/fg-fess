@@ -16,6 +16,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///messages.db?timeout=20'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 # SQLite optimasi: WAL mode agar read & write bisa jalan bersamaan
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'connect_args': {'check_same_thread': False},
@@ -117,6 +120,8 @@ class Message(db.Model):
     downvotes = db.Column(db.Integer, default=0)
     is_pinned = db.Column(db.Boolean, default=False)
     pinned_until = db.Column(db.DateTime, nullable=True)
+    image_filename = db.Column(db.String(255), nullable=True)
+    reports = db.Column(db.Integer, default=0)
 
     # Relationships
     replies   = db.relationship('Message',
@@ -128,6 +133,14 @@ class Message(db.Model):
     def visible_reply_count(self):
         return self.replies.filter_by(is_hidden=False).count()
 
+class MessageReport(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('message.id', ondelete='CASCADE'), nullable=False)
+    reason = db.Column(db.String(255), nullable=False)
+    timestamp = db.Column(db.DateTime, default=get_wib_time)
+
+    message = db.relationship('Message', backref=db.backref('reports_list', lazy=True, cascade='all, delete'))
+
 
 class Feedback(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -137,6 +150,11 @@ class Feedback(db.Model):
     admin_reply = db.Column(db.Text, nullable=True)
     admin_reply_timestamp = db.Column(db.DateTime, nullable=True)
     is_hidden = db.Column(db.Boolean, default=False)
+
+class Announcement(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=get_wib_time)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -205,7 +223,11 @@ def submit_message():
     if is_rate_limited(client_ip):
         return jsonify({'error': f'Terlalu banyak pesan. Tunggu sebentar sebelum mengirim lagi.'}), 429
 
-    data = request.get_json()
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form
+
     content = data.get('message', '').strip()
 
     if not content:
@@ -225,7 +247,38 @@ def submit_message():
     secret_token = str(uuid.uuid4())
     location = get_city_from_ip(client_ip)
     
-    new_msg = Message(content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token, location=location)
+    image_filename = None
+    if 'image' in request.files:
+        image = request.files['image']
+        if image and image.filename:
+            from werkzeug.utils import secure_filename
+            from PIL import Image
+            import io
+            ext = image.filename.rsplit('.', 1)[-1].lower()
+            if ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
+                img_bytes = image.read()
+                try:
+                    img = Image.open(io.BytesIO(img_bytes))
+                    if img.mode in ("RGBA", "P") and ext != 'gif':
+                        img = img.convert("RGB")
+                    
+                    filename = str(uuid.uuid4()) + '.webp'
+                    save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    
+                    # Resize if too large
+                    img.thumbnail((1200, 1200))
+                    
+                    # Compress and save as WebP
+                    img.save(save_path, "WEBP", quality=75)
+                    image_filename = filename
+                except Exception as e:
+                    print(f"Image compression error: {e}")
+                    filename = secure_filename(str(uuid.uuid4()) + '.' + ext)
+                    image_filename = filename
+                    image.seek(0)
+                    image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    
+    new_msg = Message(content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token, location=location, image_filename=image_filename)
     db.session.add(new_msg)
     db.session.commit()
 
@@ -247,7 +300,8 @@ def submit_message():
             'downvotes':   0,
             'is_pinned':   False,
             'secret_token': secret_token,
-            'timestamp_ms': int(new_msg.timestamp.timestamp() * 1000)
+            'timestamp_ms': int(new_msg.timestamp.timestamp() * 1000),
+            'image_filename': image_filename
         }
     }
     return jsonify(resp)
@@ -329,6 +383,21 @@ def user_delete_message(msg_id):
     db.session.commit()
     return jsonify({'success': True})
 
+@app.route('/api/messages/<int:msg_id>/report', methods=['POST'])
+def report_message(msg_id):
+    msg = Message.query.get_or_404(msg_id)
+    if msg.is_hidden:
+        return jsonify({'error': 'Pesan tidak ditemukan.'}), 404
+    
+    data = request.get_json() or {}
+    reason = data.get('reason', 'Lainnya')
+        
+    msg.reports += 1
+    new_report = MessageReport(message_id=msg.id, reason=reason[:250])
+    db.session.add(new_report)
+    db.session.commit()
+    return jsonify({'success': True})
+
 @app.route('/api/messages')
 def get_messages():
     """Fetch top-level messages for live polling. Supports ?since=<id>."""
@@ -362,6 +431,7 @@ def get_messages():
                 'upvotes':     m.upvotes,
                 'downvotes':   m.downvotes,
                 'is_pinned':   m.is_pinned,
+                'image_filename': m.image_filename,
             }
             for m in msgs
         ],
@@ -389,7 +459,8 @@ def get_messages_by_ids():
                 'date_key':    fmt_date_key(m.timestamp),
                 'date_label':  fmt_date_id(m.timestamp),
                 'reply_count': m.visible_reply_count,
-                'parent_id':   m.parent_id
+                'parent_id':   m.parent_id,
+                'image_filename': m.image_filename
             }
             for m in msgs
         ]
@@ -420,6 +491,15 @@ def get_stats():
     total = Message.query.filter_by(is_hidden=False).count()
     return jsonify({'total': total})
 
+@app.route('/api/announcement')
+def get_announcement():
+    ann = Announcement.query.order_by(Announcement.timestamp.desc()).first()
+    if ann:
+        age = (get_wib_time() - ann.timestamp).total_seconds()
+        if age <= 86400: # 24 hours
+            return jsonify({'active': True, 'id': ann.id, 'content': ann.content})
+    return jsonify({'active': False})
+
 # ─── Admin Routes ──────────────────────────────────────────────────────────────
 
 @app.route('/api/admin/messages')
@@ -437,6 +517,14 @@ def admin_api_messages():
         
     msgs = query.order_by(Message.timestamp.desc()).all()
     
+    reported_msgs = Message.query.filter(Message.reports > 0).all()
+    reported_updates = {
+        m.id: {
+            'reports': m.reports,
+            'report_reasons': [r.reason for r in m.reports_list]
+        } for m in reported_msgs
+    }
+
     return jsonify({
         'messages': [
             {
@@ -444,14 +532,18 @@ def admin_api_messages():
                 'content': m.content,
                 'time': m.timestamp.strftime('%d %b %Y, %H:%M'),
                 'is_hidden': m.is_hidden,
-                'location': m.location
+                'location': m.location,
+                'image_filename': m.image_filename,
+                'reports': m.reports,
+                'report_reasons': [r.reason for r in m.reports_list] if m.reports > 0 else []
             } for m in msgs
         ],
         'stats': {
             'total': Message.query.count(),
             'visible': Message.query.filter_by(is_hidden=False).count(),
             'hidden': Message.query.filter_by(is_hidden=True).count()
-        }
+        },
+        'reported_updates': reported_updates
     })
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -531,6 +623,33 @@ def toggle_message(msg_id):
             'hidden':  total_hidden,
         }
     })
+
+@app.route('/admin/announcement', methods=['POST'])
+@login_required
+def create_announcement():
+    content = request.json.get('content', '').strip()
+    if content:
+        ann = Announcement(content=content)
+        db.session.add(ann)
+        db.session.commit()
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Content empty'})
+
+@app.route('/admin/announcement/delete', methods=['POST'])
+@login_required
+def delete_announcement():
+    Announcement.query.delete()
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/messages/<int:msg_id>/clear_reports', methods=['POST'])
+@login_required
+def clear_reports(msg_id):
+    msg = Message.query.get_or_404(msg_id)
+    msg.reports = 0
+    MessageReport.query.filter_by(message_id=msg.id).delete()
+    db.session.commit()
+    return jsonify({'success': True})
 
 # ─── Feedback Routes ──────────────────────────────────────────────────────────
 
@@ -643,6 +762,24 @@ def backup_messages():
                 f.write(f"{status} [{msg.timestamp}] (ID:{msg.id})\n{msg.content}\n\n")
         print(f"[Backup] Saved to {backup_path}")
 
+def cleanup_old_images():
+    """Delete images older than 7 days."""
+    import time
+    with app.app_context():
+        upload_path = app.config['UPLOAD_FOLDER']
+        if not os.path.exists(upload_path):
+            return
+        now = time.time()
+        for filename in os.listdir(upload_path):
+            filepath = os.path.join(upload_path, filename)
+            if os.path.isfile(filepath):
+                if os.stat(filepath).st_mtime < now - 7 * 86400:
+                    try:
+                        os.remove(filepath)
+                        print(f"[Cleanup] Deleted old image {filename}")
+                    except Exception as e:
+                        print(f"[Cleanup] Error deleting {filename}: {e}")
+
 # ─── Init ──────────────────────────────────────────────────────────────────────
 
 with app.app_context():
@@ -679,6 +816,34 @@ with app.app_context():
         if 'pinned_until' not in existing_cols:
             conn.execute(text("ALTER TABLE message ADD COLUMN pinned_until DATETIME"))
             print('[Migration] Added pinned_until column to message table.')
+        if 'image_filename' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN image_filename VARCHAR(255)"))
+            print('[Migration] Added image_filename column to message table.')
+        if 'reports' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN reports INTEGER DEFAULT 0"))
+            print('[Migration] Added reports column to message table.')
+
+        if not inspector.has_table('announcement'):
+            conn.execute(text('''
+                CREATE TABLE announcement (
+                    id INTEGER PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    timestamp DATETIME
+                )
+            '''))
+            print('[Migration] Created announcement table.')
+
+        if not inspector.has_table('message_report'):
+            conn.execute(text('''
+                CREATE TABLE message_report (
+                    id INTEGER PRIMARY KEY,
+                    message_id INTEGER NOT NULL,
+                    reason VARCHAR(255) NOT NULL,
+                    timestamp DATETIME,
+                    FOREIGN KEY(message_id) REFERENCES message(id) ON DELETE CASCADE
+                )
+            '''))
+            print('[Migration] Created message_report table.')
 
         conn.commit()
 
@@ -700,6 +865,7 @@ if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=backup_messages, trigger='interval', days=30)
+    scheduler.add_job(func=cleanup_old_images, trigger='interval', days=1)
     scheduler.start()
     try:
         app.run(debug=debug_mode, port=5000)

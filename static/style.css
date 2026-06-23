@@ -102,6 +102,74 @@ a { color: inherit; text-decoration: none; }
   gap: 28px;
 }
 
+/* ─── Announcement Banner ──────────────────────────────────────────────────── */
+.announcement-banner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  color: var(--text);
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  box-shadow: var(--shadow-md);
+  margin-top: -8px; /* Pull up slightly */
+  margin-bottom: 0; /* Let main-layout gap handle spacing */
+  animation: slideDownFade 0.4s ease;
+}
+
+.announcement-banner.hidden {
+  display: none;
+}
+
+@keyframes slideDownFade {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.announcement-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.announcement-content {
+  flex: 1;
+}
+
+.announcement-title {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.announcement-text {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+.announcement-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-3);
+  padding: 4px;
+  margin: -4px -4px 0 0;
+  transition: color 0.15s, transform 0.15s;
+}
+
+.announcement-close:hover {
+  color: var(--danger);
+  transform: scale(1.1);
+}
+
 /* ─── Compose Card ─────────────────────────────────────────────────────────── */
 .compose-card {
   background: var(--surface);
@@ -917,6 +985,16 @@ a { color: inherit; text-decoration: none; }
 
 /* ─── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
+  .header-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .header-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
   .admin-layout { max-width: 100%; }
 
   .stats-bar {

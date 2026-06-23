@@ -11,6 +11,45 @@ const PER_PAGE      = 20;
 // Parse initial total from text like "15 pesan" → 15
 let lastKnownTotal  = parseInt((document.getElementById('feedCount')?.textContent || '0').replace(/\D/g, '')) || 0;
 
+// ─── Announcement ─────────────────────────────────────────────────────────────
+
+async function fetchAnnouncement() {
+  const banner = document.getElementById('announcementBanner');
+  const textEl = document.getElementById('announcementText');
+  if (!banner || !textEl) return;
+
+  try {
+    const res = await fetch('/api/announcement');
+    const data = await res.json();
+    
+    if (data.active && data.id) {
+      const dismissed = localStorage.getItem('dismissed_announcement');
+      if (dismissed !== String(data.id)) {
+        textEl.textContent = data.content;
+        banner.dataset.id = data.id;
+        banner.classList.remove('hidden');
+      }
+    } else {
+      banner.classList.add('hidden');
+    }
+  } catch (e) {
+    // silently fail
+  }
+}
+
+function dismissAnnouncement() {
+  const banner = document.getElementById('announcementBanner');
+  if (banner) {
+    banner.classList.add('hidden');
+    const id = banner.dataset.id;
+    if (id) {
+      localStorage.setItem('dismissed_announcement', id);
+    }
+  }
+}
+
+if (currentPage === 1) fetchAnnouncement();
+
 // ─── Character Counter ────────────────────────────────────────────────────────
 
 const textarea = document.getElementById('messageInput');
@@ -22,6 +61,18 @@ if (textarea && counter) {
     counter.textContent = `${len} / 500`;
     counter.classList.toggle('near-limit', len >= 400 && len < 480);
     counter.classList.toggle('at-limit', len >= 480);
+  });
+}
+
+const imageInput = document.getElementById('imageInput');
+const imageLabel = document.getElementById('imageLabel');
+if (imageInput && imageLabel) {
+  imageInput.addEventListener('change', () => {
+    if (imageInput.files && imageInput.files.length > 0) {
+      imageLabel.textContent = '1 Gambar';
+    } else {
+      imageLabel.textContent = 'Gambar';
+    }
   });
 }
 
@@ -40,10 +91,15 @@ async function submitMessage() {
   feedback.className = 'submit-feedback hidden';
 
   try {
+    const formData = new FormData();
+    formData.append('message', message);
+    if (imageInput && imageInput.files[0]) {
+      formData.append('image', imageInput.files[0]);
+    }
+
     const res  = await fetch('/api/submit', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ message })
+      body:    formData
     });
     const data = await res.json();
 
@@ -56,6 +112,10 @@ async function submitMessage() {
     if (counter) {
       counter.textContent = '0 / 500';
       counter.classList.remove('near-limit', 'at-limit');
+    }
+    if (imageInput) {
+      imageInput.value = '';
+      if (imageLabel) imageLabel.textContent = 'Gambar';
     }
 
     showFeedback(feedback, 'success', '✓ Pesanmu telah terkirim!');
@@ -86,6 +146,8 @@ async function submitMessage() {
 
 async function poll() {
   if (currentPage !== 1) return; // only poll on first page
+
+  fetchAnnouncement();
 
   try {
     const res  = await fetch(`/api/messages?since=${latestId}`);
@@ -255,6 +317,7 @@ function injectMessageCard(msg, highlight) {
   card.innerHTML = `
     ${pinnedBadge}
     <p class="message-text">${escapeHtml(msg.content)}</p>
+    ${msg.image_filename ? `<div class="message-image-container" style="margin-top: 12px;"><img src="/static/uploads/${msg.image_filename}" alt="Uploaded Image" style="max-width: 100%; max-height: 400px; border-radius: var(--radius); border: 1px solid var(--border);"></div>` : ''}
     <div class="message-meta">
       <time class="message-time">${msg.time}</time>
       <div class="meta-actions">
@@ -274,6 +337,11 @@ function injectMessageCard(msg, highlight) {
         <button class="reply-toggle-btn" onclick="toggleReply(${msg.id}, this)" data-open="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="reply-label">${replyLabel}</span>
+        </button>
+        <button class="vote-btn" onclick="reportMessage(${msg.id})" title="Laporkan Pesan" style="color: var(--danger); margin-left: auto;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line>
+          </svg>
         </button>
       </div>
     </div>
@@ -819,4 +887,100 @@ async function voteMessage(msgId, voteType) {
 
 if (currentPage === 1) {
   pollInterval = setInterval(poll, 5000); // every 5 seconds
+}
+
+function showConfirm(msg, title = "Konfirmasi", icon = "⚠️", okText = "Ya") {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <div class="confirm-icon">${icon}</div>
+        <div class="confirm-title">${title}</div>
+        <div class="confirm-msg">${msg}</div>
+        <div class="confirm-actions">
+          <button class="confirm-cancel" id="confirmCancel">Batal</button>
+          <button class="confirm-ok" id="confirmOk">${okText}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#confirmOk').onclick = () => { overlay.remove(); resolve(true); };
+    overlay.querySelector('#confirmCancel').onclick = () => { overlay.remove(); resolve(false); };
+    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(false); } });
+  });
+}
+
+function showReportModal() {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box" style="text-align: left;">
+        <div class="confirm-icon" style="text-align: center;">🚩</div>
+        <div class="confirm-title" style="text-align: center;">Laporkan Pesan</div>
+        <div class="confirm-msg" style="margin-bottom: 12px; text-align: center;">Pilih alasan pelaporan:</div>
+        <select id="reportReason" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text);">
+          <option value="Spam atau Promosi">Spam atau Promosi</option>
+          <option value="Konten Tidak Pantas / NSFW">Konten Tidak Pantas / NSFW</option>
+          <option value="Kekerasan atau Bullying">Kekerasan atau Bullying</option>
+          <option value="Ujaran Kebencian">Ujaran Kebencian</option>
+          <option value="Lainnya">Lainnya</option>
+        </select>
+        <input type="text" id="customReason" placeholder="Tuliskan alasan..." style="display: none; width: 100%; padding: 8px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); font-size: 0.85rem; box-sizing: border-box;" maxlength="250">
+        <div class="confirm-actions" style="margin-top: 16px;">
+          <button class="confirm-cancel" id="reportCancel">Batal</button>
+          <button class="confirm-ok" id="reportOk" style="background: var(--danger);">Laporkan</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    
+    const selectEl = overlay.querySelector('#reportReason');
+    const customEl = overlay.querySelector('#customReason');
+    
+    selectEl.addEventListener('change', () => {
+      if (selectEl.value === 'Lainnya') {
+        customEl.style.display = 'block';
+        customEl.focus();
+      } else {
+        customEl.style.display = 'none';
+      }
+    });
+
+    overlay.querySelector('#reportOk').onclick = () => { 
+      let reason = selectEl.value;
+      if (reason === 'Lainnya') {
+        reason = customEl.value.trim() || 'Lainnya';
+      }
+      overlay.remove(); 
+      resolve(reason); 
+    };
+    overlay.querySelector('#reportCancel').onclick = () => { overlay.remove(); resolve(null); };
+    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(null); } });
+  });
+}
+
+async function reportMessage(msgId) {
+  if (localStorage.getItem(`reported_${msgId}`)) {
+    showToast('Pesan ini sudah pernah kamu laporkan.', 'info');
+    return;
+  }
+  
+  const reason = await showReportModal();
+  if (!reason) return;
+  
+  try {
+    const res = await fetch(`/api/messages/${msgId}/report`, { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    if (res.ok) {
+      localStorage.setItem(`reported_${msgId}`, 'true');
+      showToast('Terima kasih. Pesan telah dilaporkan.', 'success');
+    } else {
+      showToast('Gagal melaporkan pesan.', 'error');
+    }
+  } catch (e) {
+    showToast('Gagal melaporkan pesan.', 'error');
+  }
 }
