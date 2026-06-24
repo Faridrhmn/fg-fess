@@ -17,6 +17,7 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///messages.db?timeout=20'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max-limit
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # SQLite optimasi: WAL mode agar read & write bisa jalan bersamaan
@@ -284,10 +285,12 @@ def submit_message():
 
     # Total only counts top-level visible messages
     total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
+    unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
 
     resp = {
         'success':   True,
         'total':     total,
+        'unpinned_total': unpinned_total,
         'parent_id': parent_id,
         'message': {
             'id':          new_msg.id,
@@ -412,6 +415,7 @@ def get_messages():
     # We need all visible top-level messages to provide visible_ids and reply_counts
     all_visible = Message.query.filter_by(is_hidden=False, parent_id=None).all()
     total = len(all_visible)
+    unpinned_total = sum(1 for m in all_visible if not m.is_pinned)
     visible_ids = [m.id for m in all_visible]
     reply_counts = {m.id: m.visible_reply_count for m in all_visible}
     vote_counts = {m.id: {'u': m.upvotes, 'd': m.downvotes, 'p': m.is_pinned} for m in all_visible}
@@ -436,6 +440,7 @@ def get_messages():
             for m in msgs
         ],
         'total': total,
+        'unpinned_total': unpinned_total,
         'visible_ids': visible_ids,
         'visible_replies': visible_replies,
         'reply_counts': reply_counts,

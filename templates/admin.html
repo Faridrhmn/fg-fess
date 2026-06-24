@@ -90,8 +90,8 @@
             {% endif %}
             <p class="admin-msg-text">{{ msg.content }}</p>
             {% if msg.image_filename %}
-            <div style="margin-top: 8px;">
-              <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image" style="max-height: 200px; border-radius: var(--radius); border: 1px solid var(--border);">
+            <div style="margin-top: 8px; overflow: hidden;">
+              <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image" style="max-width: 100%; max-height: 200px; height: auto; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); display: block;">
             </div>
             {% endif %}
             <time class="admin-msg-time">{{ msg.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ msg.id }} {% if msg.location and msg.location != 'Tidak diketahui' %}· 📍 {{ msg.location }}{% endif %}</time>
@@ -303,7 +303,7 @@
         : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><span>Sembunyikan</span>`;
       
       const safeContent = msg.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const imageHtml = msg.image_filename ? `<div style="margin-top: 8px;"><img src="/static/uploads/${msg.image_filename}" alt="Uploaded Image" style="max-height: 200px; border-radius: var(--radius); border: 1px solid var(--border);"></div>` : '';
+      const imageHtml = msg.image_filename ? `<div style="margin-top: 8px; overflow: hidden;"><img src="/static/uploads/${msg.image_filename}" alt="Uploaded Image" style="max-width: 100%; max-height: 200px; height: auto; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); display: block;"></div>` : '';
       
       let reportsHtml = '';
       if (msg.reports > 0) {

@@ -10,6 +10,7 @@ let pollInterval    = null;
 const PER_PAGE      = 20;
 // Parse initial total from text like "15 pesan" → 15
 let lastKnownTotal  = parseInt((document.getElementById('feedCount')?.textContent || '0').replace(/\D/g, '')) || 0;
+let unpinnedTotal   = feed ? parseInt(feed.dataset.unpinnedTotal || '0') : 0;
 
 // ─── Announcement ─────────────────────────────────────────────────────────────
 
@@ -86,6 +87,16 @@ async function submitMessage() {
   const message = input.value.trim();
   if (!message) return;
 
+  if (imageInput && imageInput.files[0]) {
+    const file = imageInput.files[0];
+    if (file.size > 5 * 1024 * 1024) {
+      showFeedback(feedback, 'error', 'Ukuran gambar maksimal 5MB.');
+      btn.disabled = false;
+      btn.querySelector('.btn-text').textContent = 'Kirim';
+      return;
+    }
+  }
+
   btn.disabled = true;
   btn.querySelector('.btn-text').textContent = 'Mengirim…';
   feedback.className = 'submit-feedback hidden';
@@ -131,7 +142,7 @@ async function submitMessage() {
       // Update latestId so next poll ignores our own message
       if (msg.id > latestId) latestId = msg.id;
       // Update count
-      updateCount(data.total);
+      updateCount(data.total, data.unpinned_total);
     }
 
   } catch (e) {
@@ -154,7 +165,9 @@ async function poll() {
     const data = await res.json();
 
     // Update count regardless
-    if (data.total !== undefined) updateCount(data.total);
+    if (data.total !== undefined) {
+      updateCount(data.total, data.unpinned_total);
+    }
 
     // Update reply counts for all rendered messages in real-time
     if (data.reply_counts) {
@@ -391,16 +404,20 @@ function injectMessageCard(msg, highlight) {
 
 // ─── Count & Pagination Helpers ──────────────────────────────────────────────
 
-function updateCount(total) {
+function updateCount(total, unpinnedTotalParam) {
   if (countEl) countEl.textContent = `${total} pesan`;
 
-  // Only update pagination if total pages changed
-  const prevPages = Math.ceil(lastKnownTotal / PER_PAGE);
-  const newPages  = Math.ceil(total / PER_PAGE);
+  const currentUnpinned = unpinnedTotalParam !== undefined ? unpinnedTotalParam : unpinnedTotal;
+
+  // Only update pagination if total unpinned pages changed
+  const prevPages = Math.ceil(unpinnedTotal / PER_PAGE);
+  const newPages  = Math.ceil(currentUnpinned / PER_PAGE);
   if (newPages !== prevPages || (newPages > 1 && !document.querySelector('.pagination'))) {
-    updatePagination(total);
+    updatePagination(currentUnpinned);
   }
+  
   lastKnownTotal = total;
+  unpinnedTotal = currentUnpinned;
 }
 
 /**
