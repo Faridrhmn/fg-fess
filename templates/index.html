@@ -184,8 +184,11 @@
       </div>
       {% endif %}
 
+      {% set latest_unpinned = messages.items[0].id if messages.items else 0 %}
+      {% set latest_pinned = pinned_messages[0].id if pinned_messages else 0 %}
+      {% set latest_overall = latest_unpinned if latest_unpinned > latest_pinned else latest_pinned %}
       <div class="feed" id="feedContainer" data-page="{{ current_page }}"
-        data-latest-id="{{ messages.items[0].id if messages.items else 0 }}"
+        data-latest-id="{{ latest_overall }}"
         data-unpinned-total="{{ messages.total }}">
 
         {% if messages.items %}
