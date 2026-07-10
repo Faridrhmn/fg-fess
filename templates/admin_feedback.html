@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="light">
 
 <head>
   <meta charset="UTF-8" />
@@ -9,6 +9,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    /* Apply saved theme immediately to prevent flash */
+    (function() {
+      const saved = localStorage.getItem('fgfess_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
   <style>
     /* Override admin-card to column layout for feedback cards */
     .admin-card {
@@ -102,6 +109,15 @@
           style="background: var(--surface); border-color: var(--primary); color: var(--primary);">Feedback</a>
         <a href="/" class="btn-outline-sm" target="_blank">Lihat Board</a>
         <a href="/logout" class="btn-outline-sm btn-danger-outline">Logout</a>
+        <button id="darkModeToggle" title="Toggle dark mode" aria-label="Toggle dark mode" onclick="toggleDarkMode()">
+          <svg id="darkModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
       </div>
     </div>
   </header>
@@ -273,6 +289,7 @@
       }
     }
   </script>
+  <script src="/static/theme.js"></script>
 </body>
 
 </html>
