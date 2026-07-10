@@ -505,6 +505,32 @@ def get_announcement():
             return jsonify({'active': True, 'id': ann.id, 'content': ann.content})
     return jsonify({'active': False})
 
+@app.route('/api/trending_hashtags')
+def get_trending_hashtags():
+    """Parse #hashtags from all visible messages and return top trending."""
+    import re
+    # Only look at top-level visible messages from the last 7 days
+    since = get_wib_time() - datetime.timedelta(days=7)
+    messages = Message.query.filter(
+        Message.is_hidden == False,
+        Message.parent_id == None,
+        Message.timestamp >= since
+    ).all()
+
+    hashtag_counts = {}
+    for msg in messages:
+        tags = re.findall(r'#(\w+)', msg.content, re.UNICODE)
+        for tag in tags:
+            tag_lower = tag.lower()
+            hashtag_counts[tag_lower] = hashtag_counts.get(tag_lower, 0) + 1
+
+    # Sort by count descending, take top 10
+    sorted_tags = sorted(hashtag_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return jsonify({
+        'hashtags': [{'tag': tag, 'count': count} for tag, count in sorted_tags]
+    })
+
 # ─── Admin Routes ──────────────────────────────────────────────────────────────
 
 @app.route('/api/admin/messages')
@@ -873,7 +899,7 @@ if __name__ == '__main__':
     scheduler.add_job(func=cleanup_old_images, trigger='interval', days=1)
     scheduler.start()
     try:
-        app.run(debug=debug_mode, port=5000)
+        app.run(debug=debug_mode, port=5002)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
 

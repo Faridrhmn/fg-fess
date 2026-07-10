@@ -1,4 +1,34 @@
-// ─── State ────────────────────────────────────────────────────────────────────
+// ─── Dark Mode ────────────────────────────────────────────────────────────────
+
+function toggleDarkMode() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme') || 'light';
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('fgfess_theme', next);
+  updateDarkModeIcon(next);
+}
+
+function updateDarkModeIcon(theme) {
+  const icon = document.getElementById('darkModeIcon');
+  if (!icon) return;
+  if (theme === 'dark') {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  } else {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/>' +
+      '<line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>' +
+      '<line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>' +
+      '<line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>' +
+      '<line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+  }
+}
+
+// Apply icon on load
+updateDarkModeIcon(document.documentElement.getAttribute('data-theme') || 'light');
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+// ─── State ───────────────────────────────────────────────────────────────────────
 
 const feed       = document.getElementById('feedContainer');
 const countEl    = document.getElementById('feedCount');
@@ -67,14 +97,35 @@ if (textarea && counter) {
 
 const imageInput = document.getElementById('imageInput');
 const imageLabel = document.getElementById('imageLabel');
+const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+const imagePreview = document.getElementById('imagePreview');
+
 if (imageInput && imageLabel) {
   imageInput.addEventListener('change', () => {
     if (imageInput.files && imageInput.files.length > 0) {
+      const file = imageInput.files[0];
       imageLabel.textContent = '1 Gambar';
+      if (imagePreviewContainer && imagePreview) {
+        imagePreview.src = URL.createObjectURL(file);
+        imagePreviewContainer.style.display = 'block';
+      }
     } else {
       imageLabel.textContent = 'Gambar';
+      if (imagePreviewContainer) {
+        imagePreviewContainer.style.display = 'none';
+      }
     }
   });
+}
+
+function removeImage() {
+  if (imageInput) {
+    imageInput.value = '';
+    if (imageLabel) imageLabel.textContent = 'Gambar';
+  }
+  if (imagePreviewContainer) {
+    imagePreviewContainer.style.display = 'none';
+  }
 }
 
 // ─── Submit Message ───────────────────────────────────────────────────────────
@@ -127,6 +178,7 @@ async function submitMessage() {
     if (imageInput) {
       imageInput.value = '';
       if (imageLabel) imageLabel.textContent = 'Gambar';
+      if (imagePreviewContainer) imagePreviewContainer.style.display = 'none';
     }
 
     showFeedback(feedback, 'success', '✓ Pesanmu telah terkirim!');
@@ -329,7 +381,7 @@ function injectMessageCard(msg, highlight) {
 
   card.innerHTML = `
     ${pinnedBadge}
-    <p class="message-text">${escapeHtml(msg.content)}</p>
+    <p class="message-text" data-raw="${escapeHtml(msg.content)}">${renderMessageContent(msg.content)}</p>
     ${msg.image_filename ? `<div class="message-image-container" style="margin-top: 12px;"><img src="/static/uploads/${msg.image_filename}" alt="Uploaded Image" style="max-width: 100%; max-height: 400px; border-radius: var(--radius); border: 1px solid var(--border);"></div>` : ''}
     <div class="message-meta">
       <time class="message-time">${msg.time}</time>
@@ -521,6 +573,16 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/**
+ * Render text with #hashtag links. Escapes HTML first, then makes chips clickable.
+ */
+function renderMessageContent(rawText) {
+  const escaped = escapeHtml(rawText);
+  return escaped.replace(/(^|[\s\n])(#(\w+))/g, (match, pre, full, tag) => {
+    return `${pre}<span class="hashtag-chip" onclick="filterByHashtag('${tag.toLowerCase()}')">${full}</span>`;
+  });
 }
 
 // ─── Ctrl+Enter Shortcut ─────────────────────────────────────────────────────
@@ -1000,4 +1062,169 @@ async function reportMessage(msgId) {
   } catch (e) {
     showToast('Gagal melaporkan pesan.', 'error');
   }
+}
+
+// ─── Hashtag System ───────────────────────────────────────────────────────────
+
+let activeHashtag = null;
+
+async function initHashtagSidebar() {
+  const listEl     = document.getElementById('hashtagList');
+  const mobileStrip = document.getElementById('hashtagMobileStrip');
+
+  try {
+    const res  = await fetch('/api/trending_hashtags');
+    const data = await res.json();
+
+    if (!data.hashtags || data.hashtags.length === 0) {
+      if (listEl)      listEl.innerHTML = '<p class="hashtag-sidebar-empty">Belum ada hashtag</p>';
+      if (mobileStrip) mobileStrip.style.display = 'none';
+      return;
+    }
+
+    // ── Desktop sidebar ──
+    if (listEl) {
+      listEl.innerHTML = `<div class="hashtag-list">${
+        data.hashtags.map(h => `
+          <div class="hashtag-item" id="ht-${h.tag}" onclick="filterByHashtag('${h.tag}')">
+            <span class="hashtag-item-tag">#${h.tag}</span>
+            <span class="hashtag-item-count">${h.count}</span>
+          </div>
+        `).join('')
+      }</div>`;
+    }
+
+    // ── Mobile chip strip ──
+    if (mobileStrip) {
+      mobileStrip.innerHTML = data.hashtags.map(h => `
+        <div class="hashtag-mobile-chip" id="mcht-${h.tag}" onclick="filterByHashtag('${h.tag}')">
+          #${h.tag}
+          <span class="chip-count">${h.count}</span>
+        </div>
+      `).join('');
+      // CSS media query handles show/hide — no JS width check needed
+    }
+
+  } catch (e) {
+    if (listEl)      listEl.innerHTML = '<p class="hashtag-sidebar-empty">Gagal memuat</p>';
+  }
+}
+
+// Update strip visibility on resize (CSS handles it, but this syncs JS if needed)
+window.addEventListener('resize', () => {
+  // No-op: CSS media queries handle all visibility
+});
+
+
+
+function filterByHashtag(tag) {
+  const lowerTag = tag.toLowerCase();
+
+  // Toggle off if same tag
+  if (activeHashtag === lowerTag) {
+    clearHashtagFilter();
+    return;
+  }
+
+  activeHashtag = lowerTag;
+
+  // Update sidebar active state (desktop)
+  document.querySelectorAll('.hashtag-item').forEach(el => {
+    el.classList.toggle('active-hashtag', el.id === `ht-${lowerTag}`);
+  });
+
+  // Update mobile chip active state
+  document.querySelectorAll('.hashtag-mobile-chip').forEach(el => {
+    el.classList.toggle('active-hashtag', el.id === `mcht-${lowerTag}`);
+  });
+
+  // Show/hide clear button (desktop sidebar)
+  const clearBtn = document.getElementById('hashtagClearBtn');
+  if (clearBtn) clearBtn.style.display = 'block';
+
+  // Show filter banner
+  const banner = document.getElementById('hashtagFilterBanner');
+  if (banner) {
+    banner.style.display = 'flex';
+    banner.className = 'hashtag-filter-banner';
+    banner.innerHTML = `
+      <div>Menampilkan: <span>#${lowerTag}</span></div>
+      <button class="hashtag-filter-close" onclick="clearHashtagFilter()" title="Hapus filter">✕</button>
+    `;
+  }
+
+  // Filter visible message cards
+  applyHashtagFilter(lowerTag);
+}
+
+function applyHashtagFilter(tag) {
+  const pattern = new RegExp(`#${tag}\\b`, 'i');
+  let visibleCount = 0;
+
+  document.querySelectorAll('.message-card').forEach(card => {
+    const rawText = card.querySelector('.message-text')?.dataset.raw || 
+                    card.querySelector('.message-text')?.textContent || '';
+    const matches = pattern.test(rawText);
+    card.style.display = matches ? '' : 'none';
+    if (matches) visibleCount++;
+  });
+
+  // Hide date separators that have no visible messages after them
+  document.querySelectorAll('.date-separator').forEach(sep => {
+    let next = sep.nextElementSibling;
+    let hasVisible = false;
+    while (next && !next.classList.contains('date-separator')) {
+      if (next.classList.contains('message-card') && next.style.display !== 'none') {
+        hasVisible = true;
+        break;
+      }
+      next = next.nextElementSibling;
+    }
+    sep.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function clearHashtagFilter() {
+  activeHashtag = null;
+
+  // Remove active state from sidebar (desktop) and mobile chips
+  document.querySelectorAll('.hashtag-item, .hashtag-mobile-chip').forEach(el => {
+    el.classList.remove('active-hashtag');
+  });
+
+  // Hide clear button (desktop)
+  const clearBtn = document.getElementById('hashtagClearBtn');
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  // Hide filter banner
+  const banner = document.getElementById('hashtagFilterBanner');
+  if (banner) banner.style.display = 'none';
+
+  // Show all cards and date separators
+  document.querySelectorAll('.message-card').forEach(card => card.style.display = '');
+  document.querySelectorAll('.date-separator').forEach(sep => sep.style.display = '');
+}
+
+/**
+ * Render hashtag chips on existing server-rendered message texts.
+ * Called once on page load to make Jinja-rendered content also have clickable hashtags.
+ */
+function renderExistingHashtags() {
+  document.querySelectorAll('.message-text').forEach(el => {
+    const rawText = el.dataset.raw;
+    if (!rawText) return; // already processed or no data-raw
+    el.innerHTML = renderMessageContent(rawText);
+  });
+}
+
+// Initialize on load
+renderExistingHashtags();
+if (currentPage === 1) {
+  initHashtagSidebar();
+  // Refresh hashtag sidebar every 2 minutes
+  setInterval(initHashtagSidebar, 120000);
+} else {
+  // On other pages, still render hashtag chips but no sidebar fetch
+  const sidebar = document.getElementById('hashtagSidebar');
+  if (sidebar) sidebar.style.display = 'none';
 }

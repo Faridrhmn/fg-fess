@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="light">
 
 <head>
   <meta charset="UTF-8" />
@@ -24,7 +24,20 @@
     }
     .nav-links a:hover { color: var(--text); background: var(--surface); }
     .nav-links a.active { color: var(--primary); background: rgba(19,141,130,0.1); }
+    /* Larger container for sidebar layout */
+    .container-wide {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
   </style>
+  <script>
+    /* Apply saved theme immediately to prevent flash */
+    (function() {
+      const saved = localStorage.getItem('fgfess_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
 </head>
 
 <body>
@@ -40,10 +53,19 @@
         <a href="/" class="active">Board Utama</a>
         <a href="/feedback">Bug &amp; Fitur</a>
       </nav>
+      <button id="darkModeToggle" title="Toggle dark mode" aria-label="Toggle dark mode" onclick="toggleDarkMode()">
+        <svg id="darkModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
     </div>
   </header>
 
-  <main class="container main-layout">
+  <main class="container-wide main-layout">
     <!-- Announcement Banner -->
     <div id="announcementBanner" class="announcement-banner hidden">
       <svg class="announcement-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" width="22" height="22">
@@ -65,8 +87,12 @@
         <span class="char-counter" id="charCounter">0 / 500</span>
       </div>
       <textarea id="messageInput" class="compose-textarea"
-        placeholder="Tulis apa yang ingin kamu sampaikan… tidak ada nama, tidak ada jejak." maxlength="500"
+        placeholder="Tulis apa yang ingin kamu sampaikan… tidak ada nama, tidak ada jejak. Gunakan #hashtag untuk topik!" maxlength="500"
         rows="4"></textarea>
+      <div id="imagePreviewContainer" style="display: none; margin-top: 8px; position: relative; max-width: max-content;">
+        <img id="imagePreview" src="" style="max-height: 150px; border-radius: 8px; border: 1px solid var(--border);">
+        <button onclick="removeImage()" style="position: absolute; top: -8px; right: -8px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px;" title="Hapus Gambar">&times;</button>
+      </div>
       <div class="compose-footer">
         <p class="compose-note">Pesanmu akan tampil secara publik dan anonim. <kbd>Ctrl+Enter</kbd> untuk kirim.<br>Maks. ukuran gambar: 5MB.</p>
         <div style="display: flex; gap: 8px; align-items: center;">
@@ -91,186 +117,222 @@
       <div id="submitFeedback" class="submit-feedback hidden"></div>
     </section>
 
-    <!-- Feed -->
-    <section class="feed-section">
-      <div class="feed-header">
-        <h1 class="feed-title">Papan Pesan</h1>
-        <span class="feed-count" id="feedCount">{{ messages.total + pinned_messages|length }} pesan</span>
-      </div>
+    <!-- Content + Sidebar layout -->
+    <div class="content-with-sidebar">
 
-      {# Determine the current page to only show live indicator on page 1 #}
-      {% set current_page = request.args.get('page', 1) | int %}
+      <!-- Feed (main content) -->
+      <section class="feed-section content-main">
+        <div class="feed-header">
+          <h1 class="feed-title">Papan Pesan</h1>
+          <span class="feed-count" id="feedCount">{{ messages.total + pinned_messages|length }} pesan</span>
+        </div>
 
-      {% macro render_message(msg) %}
-        <article class="message-card {% if msg.is_pinned %}pinned-message{% endif %}" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
-          {% if msg.is_pinned %}
-          <div class="pinned-badge">
-            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
-              <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
-            </svg>
-            Trending Topic
-          </div>
-          {% endif %}
-          <p class="message-text">{{ msg.content }}</p>
-          {% if msg.image_filename %}
-          <div class="message-image-container" style="margin-top: 12px;">
-            <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image" style="max-width: 100%; max-height: 400px; border-radius: var(--radius); border: 1px solid var(--border);">
-          </div>
-          {% endif %}
-          <div class="message-meta">
-            <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
-            <div class="meta-actions">
-              <span class="user-delete-container" id="user-del-{{ msg.id }}"></span>
-              <button class="vote-btn upvote-btn" onclick="voteMessage({{ msg.id }}, 'up')" id="upvote-{{ msg.id }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                  <path d="M12 19V5M5 12l7-7 7 7"/>
-                </svg>
-                <span id="upvote-count-{{ msg.id }}">{{ msg.upvotes }}</span>
-              </button>
-              <button class="vote-btn downvote-btn" onclick="voteMessage({{ msg.id }}, 'down')" id="downvote-{{ msg.id }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                  <path d="M12 5v14M19 12l-7 7-7-7"/>
-                </svg>
-                <span id="downvote-count-{{ msg.id }}">{{ msg.downvotes }}</span>
-              </button>
-              <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <span class="reply-label">Balas{% if msg.visible_reply_count > 0 %} · {{ msg.visible_reply_count }}{% endif %}</span>
-              </button>
-              <button class="vote-btn" onclick="reportMessage({{ msg.id }})" title="Laporkan Pesan" style="color: var(--danger); margin-left: auto;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line>
-                </svg>
-              </button>
+        <!-- Mobile hashtag strip (visible on ≤920px, hidden on desktop via CSS) -->
+        <div class="hashtag-mobile-strip" id="hashtagMobileStrip"></div>
+
+        <!-- Hashtag filter active banner (injected by JS) -->
+        <div id="hashtagFilterBanner" style="display:none;"></div>
+
+
+        {# Determine the current page to only show live indicator on page 1 #}
+        {% set current_page = request.args.get('page', 1) | int %}
+
+        {% macro render_message(msg) %}
+          <article class="message-card {% if msg.is_pinned %}pinned-message{% endif %}" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
+            {% if msg.is_pinned %}
+            <div class="pinned-badge">
+              <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
+                <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+              </svg>
+              Trending Topic
             </div>
-          </div>
-
-          <!-- Reply Thread (hidden by default) -->
-          <div class="reply-thread hidden" id="thread-{{ msg.id }}">
-            <div class="reply-list" id="reply-list-{{ msg.id }}">
-              <!-- Replies loaded via JS -->
-              <p class="reply-loading">Memuat balasan…</p>
+            {% endif %}
+            <p class="message-text" data-raw="{{ msg.content | e }}">{{ msg.content }}</p>
+            {% if msg.image_filename %}
+            <div class="message-image-container" style="margin-top: 12px;">
+              <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image" style="max-width: 100%; max-height: 400px; border-radius: var(--radius); border: 1px solid var(--border);">
             </div>
-            <div class="reply-form">
-              <textarea id="reply-input-{{ msg.id }}" class="reply-textarea" placeholder="Tulis balasan anonim…"
-                maxlength="500" rows="2"></textarea>
-              <div class="reply-form-footer">
-                <span class="reply-char-counter" id="reply-counter-{{ msg.id }}">0 / 500</span>
-                <button class="btn-reply-send" onclick="submitReply({{ msg.id }})">Kirim Balasan</button>
+            {% endif %}
+            <div class="message-meta">
+              <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
+              <div class="meta-actions">
+                <span class="user-delete-container" id="user-del-{{ msg.id }}"></span>
+                <button class="vote-btn upvote-btn" onclick="voteMessage({{ msg.id }}, 'up')" id="upvote-{{ msg.id }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                    <path d="M12 19V5M5 12l7-7 7 7"/>
+                  </svg>
+                  <span id="upvote-count-{{ msg.id }}">{{ msg.upvotes }}</span>
+                </button>
+                <button class="vote-btn downvote-btn" onclick="voteMessage({{ msg.id }}, 'down')" id="downvote-{{ msg.id }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                    <path d="M12 5v14M19 12l-7 7-7-7"/>
+                  </svg>
+                  <span id="downvote-count-{{ msg.id }}">{{ msg.downvotes }}</span>
+                </button>
+                <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <span class="reply-label">Balas{% if msg.visible_reply_count > 0 %} · {{ msg.visible_reply_count }}{% endif %}</span>
+                </button>
+                <button class="vote-btn" onclick="reportMessage({{ msg.id }})" title="Laporkan Pesan" style="color: var(--danger); margin-left: auto;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line>
+                  </svg>
+                </button>
               </div>
             </div>
-          </div>
-        </article>
-      {% endmacro %}
 
-      {% if current_page == 1 %}
-      <div class="feed pinned-feed {% if not pinned_messages %}hidden{% endif %}" id="pinnedContainer" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
-        <h2 class="section-title" style="font-size: 0.9rem; margin-bottom: 4px; color: var(--warn); display: flex; align-items: center; gap: 6px;">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16">
-            <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
-          </svg>
-          Trending Topics
-        </h2>
-        <div id="pinnedMessagesList" style="display: flex; flex-direction: column; gap: 10px;">
-          {% if pinned_messages %}
-            {% for msg in pinned_messages %}
-              {{ render_message(msg) }}
-            {% endfor %}
-          {% endif %}
-        </div>
-        <hr style="border: 0; border-top: 1px dashed var(--border-2); margin-top: 14px;">
-      </div>
-      {% endif %}
+            <!-- Reply Thread (hidden by default) -->
+            <div class="reply-thread hidden" id="thread-{{ msg.id }}">
+              <div class="reply-list" id="reply-list-{{ msg.id }}">
+                <!-- Replies loaded via JS -->
+                <p class="reply-loading">Memuat balasan…</p>
+              </div>
+              <div class="reply-form">
+                <textarea id="reply-input-{{ msg.id }}" class="reply-textarea" placeholder="Tulis balasan anonim…"
+                  maxlength="500" rows="2"></textarea>
+                <div class="reply-form-footer">
+                  <span class="reply-char-counter" id="reply-counter-{{ msg.id }}">0 / 500</span>
+                  <button class="btn-reply-send" onclick="submitReply({{ msg.id }})">Kirim Balasan</button>
+                </div>
+              </div>
+            </div>
+          </article>
+        {% endmacro %}
 
-      {% set latest_unpinned = messages.items[0].id if messages.items else 0 %}
-      {% set latest_pinned = pinned_messages | map(attribute='id') | max if pinned_messages else 0 %}
-      {% set latest_overall = latest_unpinned if latest_unpinned > latest_pinned else latest_pinned %}
-      <div class="feed" id="feedContainer" data-page="{{ current_page }}"
-        data-latest-id="{{ latest_overall }}"
-        data-unpinned-total="{{ messages.total }}">
-
-        {% if messages.items %}
-        {% set ns = namespace(last_key=None) %}
-        {% for msg in messages.items %}
-        {# Group by date using the tgl_key and tgl_id filters (Indonesian locale) #}
-        {% set day_key = msg.timestamp | tgl_key %}
-        {% if day_key != ns.last_key %}
-        {% set ns.last_key = day_key %}
-        <div class="date-separator" data-date-key="{{ day_key }}">
-          <span class="date-label">{{ msg.timestamp | tgl_id }}</span>
-        </div>
-        {% endif %}
-
-        {{ render_message(msg) }}
-        {% endfor %}
-        {% else %}
-        <div class="empty-state" id="emptyState">
-          <p>Belum ada pesan. Jadilah yang pertama! 👆</p>
-        </div>
-        {% endif %}
-      </div>
-
-      <!-- Pagination -->
-      {% if messages.pages > 1 %}
-      <nav class="pagination" aria-label="Navigasi halaman">
-        {% if messages.has_prev %}
-        <a href="?page={{ messages.prev_num }}" class="page-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-          Sebelumnya
-        </a>
-        {% else %}
-        <span class="page-btn page-btn--disabled">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-          Sebelumnya
-        </span>
-        {% endif %}
-
-        <div class="page-numbers">
-          {% set start = [messages.page - 2, 1] | max %}
-          {% set end = [messages.page + 2, messages.pages] | min %}
-
-          {% if start > 1 %}
-          <a href="?page=1" class="page-num">1</a>
-          {% if start > 2 %}<span class="page-ellipsis">…</span>{% endif %}
-          {% endif %}
-
-          {% for p in range(start, end + 1) %}
-          {% if p == messages.page %}
-          <span class="page-num page-num--active">{{ p }}</span>
-          {% else %}
-          <a href="?page={{ p }}" class="page-num">{{ p }}</a>
-          {% endif %}
-          {% endfor %}
-
-          {% if end < messages.pages %} {% if end < messages.pages - 1 %}<span class="page-ellipsis">…</span>{% endif %}
-            <a href="?page={{ messages.pages }}" class="page-num">{{ messages.pages }}</a>
+        {% if current_page == 1 %}
+        <div class="feed pinned-feed {% if not pinned_messages %}hidden{% endif %}" id="pinnedContainer" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
+          <h2 class="section-title" style="font-size: 0.9rem; margin-bottom: 4px; color: var(--warn); display: flex; align-items: center; gap: 6px;">
+            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16">
+              <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+            </svg>
+            Trending Topics
+          </h2>
+          <div id="pinnedMessagesList" style="display: flex; flex-direction: column; gap: 10px;">
+            {% if pinned_messages %}
+              {% for msg in pinned_messages %}
+                {{ render_message(msg) }}
+              {% endfor %}
             {% endif %}
+          </div>
+          <hr style="border: 0; border-top: 1px dashed var(--border-2); margin-top: 14px;">
+        </div>
+        {% endif %}
+
+        {% set latest_unpinned = messages.items[0].id if messages.items else 0 %}
+        {% set latest_pinned = pinned_messages | map(attribute='id') | max if pinned_messages else 0 %}
+        {% set latest_overall = latest_unpinned if latest_unpinned > latest_pinned else latest_pinned %}
+        <div class="feed" id="feedContainer" data-page="{{ current_page }}"
+          data-latest-id="{{ latest_overall }}"
+          data-unpinned-total="{{ messages.total }}">
+
+          {% if messages.items %}
+          {% set ns = namespace(last_key=None) %}
+          {% for msg in messages.items %}
+          {# Group by date using the tgl_key and tgl_id filters (Indonesian locale) #}
+          {% set day_key = msg.timestamp | tgl_key %}
+          {% if day_key != ns.last_key %}
+          {% set ns.last_key = day_key %}
+          <div class="date-separator" data-date-key="{{ day_key }}">
+            <span class="date-label">{{ msg.timestamp | tgl_id }}</span>
+          </div>
+          {% endif %}
+
+          {{ render_message(msg) }}
+          {% endfor %}
+          {% else %}
+          <div class="empty-state" id="emptyState">
+            <p>Belum ada pesan. Jadilah yang pertama! 👆</p>
+          </div>
+          {% endif %}
         </div>
 
-        {% if messages.has_next %}
-        <a href="?page={{ messages.next_num }}" class="page-btn">
-          Berikutnya
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </a>
-        {% else %}
-        <span class="page-btn page-btn--disabled">
-          Berikutnya
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </span>
+        <!-- Pagination -->
+        {% if messages.pages > 1 %}
+        <nav class="pagination" aria-label="Navigasi halaman">
+          {% if messages.has_prev %}
+          <a href="?page={{ messages.prev_num }}" class="page-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Sebelumnya
+          </a>
+          {% else %}
+          <span class="page-btn page-btn--disabled">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Sebelumnya
+          </span>
+          {% endif %}
+
+          <div class="page-numbers">
+            {% set start = [messages.page - 2, 1] | max %}
+            {% set end = [messages.page + 2, messages.pages] | min %}
+
+            {% if start > 1 %}
+            <a href="?page=1" class="page-num">1</a>
+            {% if start > 2 %}<span class="page-ellipsis">…</span>{% endif %}
+            {% endif %}
+
+            {% for p in range(start, end + 1) %}
+            {% if p == messages.page %}
+            <span class="page-num page-num--active">{{ p }}</span>
+            {% else %}
+            <a href="?page={{ p }}" class="page-num">{{ p }}</a>
+            {% endif %}
+            {% endfor %}
+
+            {% if end < messages.pages %} {% if end < messages.pages - 1 %}<span class="page-ellipsis">…</span>{% endif %}
+              <a href="?page={{ messages.pages }}" class="page-num">{{ messages.pages }}</a>
+              {% endif %}
+          </div>
+
+          {% if messages.has_next %}
+          <a href="?page={{ messages.next_num }}" class="page-btn">
+            Berikutnya
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </a>
+          {% else %}
+          <span class="page-btn page-btn--disabled">
+            Berikutnya
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </span>
+          {% endif %}
+        </nav>
         {% endif %}
-      </nav>
-      {% endif %}
-    </section>
+      </section>
+
+      <!-- Hashtag Sidebar -->
+      <aside class="hashtag-sidebar" id="hashtagSidebar">
+        <div class="hashtag-sidebar-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13">
+            <line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/>
+            <line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>
+          </svg>
+          Trending Hashtag
+        </div>
+        <div id="hashtagList">
+          <!-- Skeleton loading -->
+          <div class="hashtag-sidebar-loading">
+            <div class="hashtag-skel"></div>
+            <div class="hashtag-skel" style="width:80%;"></div>
+            <div class="hashtag-skel" style="width:90%;"></div>
+            <div class="hashtag-skel" style="width:70%;"></div>
+            <div class="hashtag-skel" style="width:85%;"></div>
+          </div>
+        </div>
+        <button class="hashtag-clear-btn" id="hashtagClearBtn" style="display:none;" onclick="clearHashtagFilter()">
+          ✕ Hapus filter
+        </button>
+      </aside>
+
+    </div><!-- end content-with-sidebar -->
   </main>
 
   <footer class="site-footer">
