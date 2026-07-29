@@ -1449,7 +1449,134 @@ a { color: inherit; text-decoration: none; }
 
 .confirm-ok:hover { opacity: 0.88; }
 
+/* ─── Emoji Reaction System ──────────────────────────────────────────────────── */
+
+/* Trigger button */
+.reaction-trigger-btn {
+  position: relative;
+}
+.reaction-trigger-btn.picker-open {
+  color: var(--primary);
+  background: rgba(19,141,130,0.1);
+}
+
+/* Floating emoji picker popup */
+.emoji-picker-popup {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.08);
+  z-index: 500;
+  animation: pickerBounce 0.22s cubic-bezier(.34,1.56,.64,1) both;
+  white-space: nowrap;
+}
+
+@keyframes pickerBounce {
+  from { opacity: 0; transform: scale(0.6) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.emoji-picker-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+  padding: 4px 3px;
+  border-radius: 8px;
+  transition: transform 0.15s cubic-bezier(.34,1.56,.64,1), background 0.12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.emoji-picker-btn:hover {
+  transform: scale(1.35);
+  background: var(--bg);
+}
+.emoji-picker-btn.already-reacted {
+  background: rgba(19,141,130,0.12);
+  transform: scale(1.1);
+}
+
+/* Reactions bar under the message */
+.reactions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 3px 6px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(.34,1.56,.64,1),
+              border-color 0.15s, background 0.15s;
+  user-select: none;
+  animation: chipPop 0.25s cubic-bezier(.34,1.56,.64,1) both;
+}
+
+@keyframes chipPop {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.reaction-chip:hover {
+  transform: scale(1.08);
+  border-color: var(--border-2);
+  background: var(--bg);
+}
+
+.reaction-chip.my-reaction {
+  border-color: rgba(19,141,130,0.5);
+  background: rgba(19,141,130,0.08);
+}
+
+[data-theme="dark"] .reaction-chip.my-reaction {
+  border-color: rgba(19,141,130,0.5);
+  background: rgba(19,141,130,0.15);
+}
+
+.reaction-chip .chip-emoji {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.reaction-chip .chip-count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.reaction-chip.my-reaction .chip-count {
+  color: var(--primary);
+}
+
+/* Burst pop animation when reacting */
+@keyframes reactionBurst {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.6); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+.reaction-chip.burst {
+  animation: reactionBurst 0.4s cubic-bezier(.34,1.56,.64,1);
+}
+
 /* ─── Toast Notifications ────────────────────────────────────────────────────── */
+
 #toast-container {
   position: fixed;
   bottom: 24px;

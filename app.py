@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 import datetime
@@ -19,6 +20,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max-limit
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 
 # SQLite optimasi: WAL mode agar read & write bisa jalan bersamaan
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -143,6 +147,20 @@ class MessageReport(db.Model):
     message = db.relationship('Message', backref=db.backref('reports_list', lazy=True, cascade='all, delete'))
 
 
+class MessageReaction(db.Model):
+    """Stores emoji reactions per message. One reaction per emoji per IP."""
+    __tablename__ = 'message_reaction'
+    id         = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('message.id', ondelete='CASCADE'), nullable=False)
+    emoji      = db.Column(db.String(10), nullable=False)   # e.g. '❤️', '😂'
+    client_ip  = db.Column(db.String(45), nullable=False)   # IPv4/IPv6
+    timestamp  = db.Column(db.DateTime, default=get_wib_time)
+
+    message = db.relationship('Message', backref=db.backref('reactions', lazy=True, cascade='all, delete'))
+
+    # Ensure one reaction per emoji per IP per message
+    __table_args__ = (db.UniqueConstraint('message_id', 'emoji', 'client_ip', name='uq_reaction'),)
+
 class Feedback(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
@@ -187,7 +205,10 @@ def index():
         .order_by(Message.timestamp.desc())\
         .paginate(page=page, per_page=per_page, error_out=False)
     
-    return render_template('index.html', messages=messages, pinned_messages=pinned_messages)
+    visible_ids = [m.id for m in pinned_messages] + [m.id for m in messages.items]
+    reaction_counts = _get_reactions_bulk(visible_ids)
+    
+    return render_template('index.html', messages=messages, pinned_messages=pinned_messages, reaction_counts=reaction_counts)
 
 def get_city_from_ip(ip):
     if ip in ('127.0.0.1', 'localhost', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
@@ -307,7 +328,29 @@ def submit_message():
             'image_filename': image_filename
         }
     }
+    if parent_id:
+        resp['message']['parent_id'] = parent_id
+        
+        # Omit secret_token for broadcast
+        public_msg = resp['message'].copy()
+        public_msg.pop('secret_token', None)
+        
+        socketio.emit('new_reply', public_msg)
+    else:
+        # Omit secret_token for broadcast
+        public_msg = resp['message'].copy()
+        public_msg.pop('secret_token', None)
+        
+        # Also include total stats for top-level message events
+        socketio.emit('new_message', {
+            'message': public_msg,
+            'total': total,
+            'unpinned_total': unpinned_total
+        })
+        
     return jsonify(resp)
+
+
 
 @app.route('/api/messages/<int:msg_id>/vote', methods=['POST'])
 def vote_message(msg_id):
@@ -359,13 +402,16 @@ def vote_message(msg_id):
 
     db.session.commit()
     
-    return jsonify({
+    resp = {
         'success': True,
         'upvotes': msg.upvotes,
         'downvotes': msg.downvotes,
         'is_pinned': msg.is_pinned,
         'is_hidden': msg.is_hidden
-    })
+    }
+    socketio.emit('update_vote', {'id': msg_id, 'counts': resp})
+    return jsonify(resp)
+
 
 @app.route('/api/user_delete/<int:msg_id>', methods=['POST'])
 def user_delete_message(msg_id):
@@ -384,6 +430,11 @@ def user_delete_message(msg_id):
         
     db.session.delete(msg)
     db.session.commit()
+    
+    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
+    unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
+    
+    socketio.emit('message_deleted', {'id': msg_id, 'total': total, 'unpinned_total': unpinned_total})
     return jsonify({'success': True})
 
 @app.route('/api/messages/<int:msg_id>/report', methods=['POST'])
@@ -412,16 +463,11 @@ def get_messages():
 
     msgs  = query.order_by(Message.timestamp.desc()).all()
     
-    # We need all visible top-level messages to provide visible_ids and reply_counts
-    all_visible = Message.query.filter_by(is_hidden=False, parent_id=None).all()
-    total = len(all_visible)
-    unpinned_total = sum(1 for m in all_visible if not m.is_pinned)
-    visible_ids = [m.id for m in all_visible]
-    reply_counts = {m.id: m.visible_reply_count for m in all_visible}
-    vote_counts = {m.id: {'u': m.upvotes, 'd': m.downvotes, 'p': m.is_pinned} for m in all_visible}
+    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
+    unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
 
-    # Also need visible IDs for replies so the client can remove deleted replies
-    visible_replies = [m[0] for m in db.session.query(Message.id).filter(Message.is_hidden==False, Message.parent_id.isnot(None)).all()]
+    msg_ids = [m.id for m in msgs]
+    reactions = _get_reactions_bulk(msg_ids)
 
     return jsonify({
         'messages': [
@@ -436,15 +482,12 @@ def get_messages():
                 'downvotes':   m.downvotes,
                 'is_pinned':   m.is_pinned,
                 'image_filename': m.image_filename,
+                'reactions':   reactions.get(m.id, {})
             }
             for m in msgs
         ],
         'total': total,
-        'unpinned_total': unpinned_total,
-        'visible_ids': visible_ids,
-        'visible_replies': visible_replies,
-        'reply_counts': reply_counts,
-        'vote_counts': vote_counts
+        'unpinned_total': unpinned_total
     })
 
 @app.route('/api/messages_by_ids', methods=['POST'])
@@ -495,6 +538,73 @@ def get_stats():
     """Quick endpoint for real-time total count."""
     total = Message.query.filter_by(is_hidden=False).count()
     return jsonify({'total': total})
+
+
+EMOJI_LIST = ['❤️', '😂', '😮', '😢', '😡', '👍']
+
+@app.route('/api/messages/<int:msg_id>/react', methods=['POST'])
+def react_message(msg_id):
+    """Toggle an emoji reaction on a message."""
+    msg = Message.query.get_or_404(msg_id)
+    if msg.is_hidden:
+        return jsonify({'error': 'Pesan tidak ditemukan.'}), 404
+
+    data = request.get_json() or {}
+    emoji = data.get('emoji', '')
+    if emoji not in EMOJI_LIST:
+        return jsonify({'error': 'Emoji tidak valid.'}), 400
+
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+
+    existing = MessageReaction.query.filter_by(
+        message_id=msg_id, emoji=emoji, client_ip=client_ip
+    ).first()
+
+    if existing:
+        db.session.delete(existing)
+        action = 'removed'
+    else:
+        new_reaction = MessageReaction(message_id=msg_id, emoji=emoji, client_ip=client_ip)
+        db.session.add(new_reaction)
+        action = 'added'
+
+    db.session.commit()
+
+    # Return updated counts for all emojis on this message
+    counts = _get_reaction_counts(msg_id)
+    socketio.emit('update_reaction', {'id': msg_id, 'reactions': counts})
+    return jsonify({'success': True, 'action': action, 'reactions': counts})
+
+
+
+def _get_reaction_counts(msg_id):
+    """Return {emoji: count} dict for a message."""
+    rows = db.session.query(
+        MessageReaction.emoji,
+        db.func.count(MessageReaction.id).label('cnt')
+    ).filter(
+        MessageReaction.message_id == msg_id
+    ).group_by(MessageReaction.emoji).all()
+    return {row.emoji: row.cnt for row in rows}
+
+
+def _get_reactions_bulk(msg_ids):
+    """Return {msg_id: {emoji: count}} for a list of message IDs."""
+    if not msg_ids:
+        return {}
+    rows = db.session.query(
+        MessageReaction.message_id,
+        MessageReaction.emoji,
+        db.func.count(MessageReaction.id).label('cnt')
+    ).filter(
+        MessageReaction.message_id.in_(msg_ids)
+    ).group_by(MessageReaction.message_id, MessageReaction.emoji).all()
+
+    result = {}
+    for row in rows:
+        result.setdefault(row.message_id, {})[row.emoji] = row.cnt
+    return result
+
 
 @app.route('/api/announcement')
 def get_announcement():
@@ -627,7 +737,7 @@ def delete_message(msg_id):
     db.session.commit()
     total_visible = Message.query.filter_by(is_hidden=False).count()
     total_hidden  = Message.query.filter_by(is_hidden=True).count()
-    return jsonify({
+    resp = jsonify({
         'success': True,
         'stats': {
             'total':   total_visible + total_hidden,
@@ -635,6 +745,12 @@ def delete_message(msg_id):
             'hidden':  total_hidden,
         }
     })
+    
+    pub_total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
+    pub_unpinned = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
+    socketio.emit('message_deleted', {'id': msg_id, 'total': pub_total, 'unpinned_total': pub_unpinned})
+    return resp
+
 
 @app.route('/admin/toggle/<int:msg_id>', methods=['POST'])
 @login_required
@@ -645,7 +761,7 @@ def toggle_message(msg_id):
     db.session.commit()
     total_visible = Message.query.filter_by(is_hidden=False).count()
     total_hidden  = Message.query.filter_by(is_hidden=True).count()
-    return jsonify({
+    resp = jsonify({
         'success':   True,
         'is_hidden': msg.is_hidden,
         'stats': {
@@ -654,6 +770,15 @@ def toggle_message(msg_id):
             'hidden':  total_hidden,
         }
     })
+    if msg.is_hidden:
+        pub_total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
+        pub_unpinned = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
+        socketio.emit('message_deleted', {'id': msg_id, 'total': pub_total, 'unpinned_total': pub_unpinned}) # Treat hide as delete on client
+    else:
+        # Client handles unhide by requesting the new message via get_messages_by_ids or we can just tell them to refresh
+        socketio.emit('message_unhidden', {'id': msg_id})
+    return resp
+
 
 @app.route('/admin/announcement', methods=['POST'])
 @login_required
@@ -876,6 +1001,20 @@ with app.app_context():
             '''))
             print('[Migration] Created message_report table.')
 
+        if not inspector.has_table('message_reaction'):
+            conn.execute(text('''
+                CREATE TABLE message_reaction (
+                    id INTEGER PRIMARY KEY,
+                    message_id INTEGER NOT NULL,
+                    emoji VARCHAR(10) NOT NULL,
+                    client_ip VARCHAR(45) NOT NULL,
+                    timestamp DATETIME,
+                    FOREIGN KEY(message_id) REFERENCES message(id) ON DELETE CASCADE,
+                    UNIQUE(message_id, emoji, client_ip)
+                )
+            '''))
+            print('[Migration] Created message_reaction table.')
+
         conn.commit()
 
     admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
@@ -899,7 +1038,8 @@ if __name__ == '__main__':
     scheduler.add_job(func=cleanup_old_images, trigger='interval', days=1)
     scheduler.start()
     try:
-        app.run(debug=debug_mode, port=5002)
+        socketio.run(app, debug=debug_mode, port=5002)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
+
 

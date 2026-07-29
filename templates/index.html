@@ -28,7 +28,8 @@
     .container-wide {
       max-width: 980px;
       margin: 0 auto;
-      padding: 0 20px;
+      padding-left: 20px;
+      padding-right: 20px;
     }
   </style>
   <script>
@@ -157,6 +158,14 @@
               <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
               <div class="meta-actions">
                 <span class="user-delete-container" id="user-del-{{ msg.id }}"></span>
+                <!-- Reaction trigger -->
+                <button class="vote-btn reaction-trigger-btn" onclick="toggleReactionPicker({{ msg.id }}, this)" title="Tambah reaksi" id="react-btn-{{ msg.id }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8 13s1.5 2 4 2 4-2 4-2"/>
+                    <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+                  </svg>
+                </button>
                 <button class="vote-btn upvote-btn" onclick="voteMessage({{ msg.id }}, 'up')" id="upvote-{{ msg.id }}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
                     <path d="M12 19V5M5 12l7-7 7 7"/>
@@ -182,6 +191,10 @@
                 </button>
               </div>
             </div>
+
+            <!-- Active reactions bar -->
+            <div class="reactions-bar" id="reactions-{{ msg.id }}"></div>
+
 
             <!-- Reply Thread (hidden by default) -->
             <div class="reply-thread hidden" id="thread-{{ msg.id }}">
@@ -341,6 +354,10 @@
     </div>
   </footer>
 
+  <script>
+    window.INITIAL_REACTIONS = {{ reaction_counts | tojson | safe }};
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
   <script src="/static/theme.js"></script>
   <script src="/static/script.js"></script>
 </body>

@@ -161,16 +161,6 @@ async function submitMessage() {
       saveMyMessage(data.message.id, data.message.secret_token, data.message.timestamp_ms);
     }
 
-    // Inject own message immediately (skip pending buffer — own message shown right away)
-    if (currentPage === 1 && data.message) {
-      const msg = data.message;
-      injectMessageCard(msg, true);
-      // Update latestId so next poll ignores our own message
-      if (msg.id > latestId) latestId = msg.id;
-      // Update count
-      updateCount(data.total, data.unpinned_total);
-    }
-
   } catch (e) {
     showFeedback(feedback, 'error', 'Gagal mengirim. Coba lagi.');
   } finally {
@@ -179,138 +169,146 @@ async function submitMessage() {
   }
 }
 
-// ─── Realtime Polling ─────────────────────────────────────────────────────────
+// ─── Realtime WebSocket (Socket.IO) ───────────────────────────────────────────
 
-async function poll() {
-  if (currentPage !== 1) return; // only poll on first page
+const socket = io();
 
-  fetchAnnouncement();
-
+// State healing: fetch any missed messages if socket reconnects
+socket.on('connect', async () => {
+  if (currentPage !== 1 || !latestId) return;
   try {
-    const res  = await fetch(`/api/messages?since=${latestId}`);
+    const res = await fetch(`/api/messages?since=${latestId}`);
     const data = await res.json();
-
-    // Update count regardless
+    
     if (data.total !== undefined) {
       updateCount(data.total, data.unpinned_total);
     }
-
-    // Update reply counts for all rendered messages in real-time
-    if (data.reply_counts) {
-      for (const [id, count] of Object.entries(data.reply_counts)) {
-        const labelEl = document.querySelector(`#msg-${id} .reply-label`);
-        if (labelEl) {
-          labelEl.textContent = count > 0 ? `Balas · ${count}` : 'Balas';
-        }
-      }
-    }
-
-    // Update vote counts and pinned state
-    if (data.vote_counts) {
-      for (const [idStr, counts] of Object.entries(data.vote_counts)) {
-        const upEl = document.getElementById(`upvote-count-${idStr}`);
-        if (upEl) upEl.textContent = counts.u;
-        const downEl = document.getElementById(`downvote-count-${idStr}`);
-        if (downEl) downEl.textContent = counts.d;
-        
-        const card = document.getElementById(`msg-${idStr}`);
-        if (card) {
-          if (counts.p && !card.classList.contains('pinned-message')) {
-            card.classList.add('pinned-message');
-            const p = card.querySelector('.message-text');
-            if (p && !card.querySelector('.pinned-badge')) {
-              p.insertAdjacentHTML('beforebegin', `
-                <div class="pinned-badge">
-                  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
-                    <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
-                  </svg>
-                  Trending Topic
-                </div>
-              `);
-            }
-            moveCardToCorrectContainer(card, true);
-          } else if (!counts.p && card.classList.contains('pinned-message')) {
-            card.classList.remove('pinned-message');
-            const badge = card.querySelector('.pinned-badge');
-            if (badge) badge.remove();
-            moveCardToCorrectContainer(card, false);
-          }
-        }
-      }
-    }
-
-    // Remove top-level cards that are no longer visible
-    if (data.visible_ids) {
-      const visibleSet = new Set(data.visible_ids);
-      let removedAny = false;
-      const missingIds = [];
-
-      document.querySelectorAll('.message-card').forEach(card => {
-        const id = parseInt(card.dataset.id);
-        if (id && !visibleSet.has(id)) {
-          card.remove();
-          removedAny = true;
-        }
-      });
-
-      if (removedAny) {
-        document.querySelectorAll('.date-separator').forEach(sep => {
-          const next = sep.nextElementSibling;
-          if (!next || next.classList.contains('date-separator') || next.classList.contains('pagination') || next.classList.contains('empty-state')) {
-            sep.remove();
-          }
-        });
-      }
-
-      // Detect newly unhidden top-level messages
-      let oldestId = latestId;
-      document.querySelectorAll('.message-card:not(.pinned-message)').forEach(card => {
-        const cid = parseInt(card.dataset.id);
-        if (cid && cid < oldestId) oldestId = cid;
-      });
-
-      data.visible_ids.forEach(id => {
-        if (id >= oldestId && id <= latestId && !document.getElementById(`msg-${id}`)) {
-          missingIds.push(id);
-        }
-      });
-
-      if (missingIds.length > 0) {
-        window.location.reload();
-        return;
-      }
-    }
-
-    // Remove replies that are no longer visible
-    if (data.visible_replies) {
-      const replySet = new Set(data.visible_replies);
-      document.querySelectorAll('.reply-card').forEach(card => {
-        const id = parseInt(card.dataset.id);
-        if (id && !replySet.has(id)) {
-          card.remove();
-        }
-      });
-    }
-
-    if (!data.messages || data.messages.length === 0) return;
-
-    // Filter out any we already know about
-    const newMsgs = data.messages.filter(m => m.id > latestId);
     
-    if (newMsgs.length > 0) {
-      // Sort ascending so oldest-new goes in first → newest at top
+    if (data.messages && data.messages.length > 0) {
+      const newMsgs = data.messages.filter(m => m.id > latestId);
       newMsgs.sort((a, b) => a.id - b.id);
-
       newMsgs.forEach(msg => {
         injectMessageCard(msg, true);
         if (msg.id > latestId) latestId = msg.id;
       });
     }
-
   } catch (e) {
-    // Silently fail — network hiccup
+    console.error('Failed to sync missed messages on reconnect:', e);
   }
-}
+});
+
+socket.on('new_message', (data) => {
+  if (currentPage !== 1) return; // Only update live on page 1
+  
+  if (data.total !== undefined) {
+    updateCount(data.total, data.unpinned_total);
+  }
+
+  const msg = data.message;
+  if (msg.id > latestId) {
+    injectMessageCard(msg, true);
+    latestId = msg.id;
+  }
+});
+
+socket.on('new_reply', (msg) => {
+  const replyList = document.getElementById(`reply-list-${msg.parent_id}`);
+  if (replyList) {
+    const thread = document.getElementById(`thread-${msg.parent_id}`);
+    const isOpen = !thread.classList.contains('hidden');
+    
+    // If thread is open, add it directly
+    if (isOpen) {
+      // Remove loading or no-reply text if present
+      const loading = replyList.querySelector('.reply-loading');
+      if (loading) loading.remove();
+      const noReply = replyList.querySelector('.no-replies');
+      if (noReply) noReply.remove();
+      
+      const replyHtml = buildReplyCard(msg, true);
+      replyList.insertAdjacentHTML('beforeend', replyHtml);
+      setTimeout(() => {
+        const newlyAdded = document.getElementById(`reply-${msg.id}`);
+        if (newlyAdded) newlyAdded.classList.remove('new-card');
+      }, 600);
+    }
+  }
+
+  // Update reply count label
+  const labelEl = document.querySelector(`#msg-${msg.parent_id} .reply-label`);
+  if (labelEl) {
+    // We just increment it locally since we know one was added
+    let current = parseInt(labelEl.textContent.replace('Balas · ', '')) || 0;
+    if (labelEl.textContent === 'Balas') current = 0;
+    labelEl.textContent = `Balas · ${current + 1}`;
+  }
+});
+
+socket.on('update_vote', (data) => {
+  const { id, counts } = data;
+  const upEl = document.getElementById(`upvote-count-${id}`);
+  if (upEl) upEl.textContent = counts.upvotes;
+  const downEl = document.getElementById(`downvote-count-${id}`);
+  if (downEl) downEl.textContent = counts.downvotes;
+  
+  const card = document.getElementById(`msg-${id}`);
+  if (card) {
+    if (counts.is_pinned && !card.classList.contains('pinned-message')) {
+      card.classList.add('pinned-message');
+      const p = card.querySelector('.message-text');
+      if (p && !card.querySelector('.pinned-badge')) {
+        p.insertAdjacentHTML('beforebegin', `
+          <div class="pinned-badge">
+            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
+              <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+            </svg>
+            Trending Topic
+          </div>
+        `);
+      }
+      moveCardToCorrectContainer(card, true);
+    } else if (!counts.is_pinned && card.classList.contains('pinned-message')) {
+      card.classList.remove('pinned-message');
+      const badge = card.querySelector('.pinned-badge');
+      if (badge) badge.remove();
+      moveCardToCorrectContainer(card, false);
+    }
+  }
+});
+
+socket.on('update_reaction', (data) => {
+  const bar = document.getElementById(`reactions-${data.id}`);
+  if (bar) {
+    renderReactionBar(bar, data.id, data.reactions);
+  }
+});
+
+socket.on('message_deleted', (data) => {
+  if (data.total !== undefined) {
+    updateCount(data.total, data.unpinned_total);
+  }
+
+  const card = document.getElementById(`msg-${data.id}`);
+  if (card) card.remove();
+  
+  const replyCard = document.getElementById(`reply-${data.id}`);
+  if (replyCard) {
+    const thread = replyCard.closest('.reply-thread');
+    replyCard.remove();
+    if (thread) {
+      const msgId = thread.id.replace('thread-', '');
+      updateReplyCount(msgId);
+    }
+  }
+});
+
+socket.on('message_unhidden', (data) => {
+  // If an old message is unhidden, the simplest way to maintain 
+  // chronological order is to reload the page. 
+  // This is a rare admin action, so a refresh is acceptable.
+  window.location.reload();
+});
+
 
 // ─── Card Injection Helper ────────────────────────────────────────────────────
 
@@ -361,6 +359,13 @@ function injectMessageCard(msg, highlight) {
       <time class="message-time">${msg.time}</time>
       <div class="meta-actions">
         <span class="user-delete-container" id="user-del-${msg.id}"></span>
+        <button class="vote-btn reaction-trigger-btn" onclick="toggleReactionPicker(${msg.id}, this)" title="Tambah reaksi" id="react-btn-${msg.id}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M8 13s1.5 2 4 2 4-2 4-2"/>
+            <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+          </svg>
+        </button>
         <button class="vote-btn upvote-btn" onclick="voteMessage(${msg.id}, 'up')" id="upvote-${msg.id}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
             <path d="M12 19V5M5 12l7-7 7 7"/>
@@ -384,6 +389,7 @@ function injectMessageCard(msg, highlight) {
         </button>
       </div>
     </div>
+    <div class="reactions-bar" id="reactions-${msg.id}"></div>
     <div class="reply-thread hidden" id="thread-${msg.id}">
       <div class="reply-list" id="reply-list-${msg.id}">
         <p class="reply-loading">Memuat balasan…</p>
@@ -414,6 +420,11 @@ function injectMessageCard(msg, highlight) {
 
   if (highlight) {
     setTimeout(() => card.classList.remove('new-card'), 600);
+  }
+  
+  if (msg.reactions && Object.keys(msg.reactions).length > 0) {
+    const bar = card.querySelector('.reactions-bar');
+    if (bar) renderReactionBar(bar, msg.id, msg.reactions);
   }
   
   // Re-apply vote states for injected message
@@ -681,17 +692,6 @@ async function submitReply(msgId) {
       saveMyMessage(data.message.id, data.message.secret_token, data.message.timestamp_ms);
     }
 
-    // Remove "Belum ada balasan" placeholder if present
-    const listEl = document.getElementById(`reply-list-${msgId}`);
-    const empty  = listEl.querySelector('.reply-empty');
-    if (empty) empty.remove();
-
-    // Inject the new reply card
-    listEl.insertAdjacentHTML('beforeend', buildReplyCard(data.message, true));
-
-    // Update reply count on the toggle button
-    updateReplyCount(msgId);
-
   } catch {
     showToast('Gagal mengirim. Coba lagi.', 'error');
   } finally {
@@ -936,10 +936,10 @@ async function voteMessage(msgId, voteType) {
   }
 }
 
-// ─── Start Polling (page 1 only) ─────────────────────────────────────────────
+// ─── Periodic Announcement Check ─────────────────────────────────────────────
 
 if (currentPage === 1) {
-  pollInterval = setInterval(poll, 5000); // every 5 seconds
+  setInterval(fetchAnnouncement, 60000); // Check announcement every minute
 }
 
 function showConfirm(msg, title = "Konfirmasi", icon = "⚠️", okText = "Ya") {
@@ -1038,7 +1038,189 @@ async function reportMessage(msgId) {
   }
 }
 
+// ─── Emoji Reaction System ────────────────────────────────────────────────────
+
+const EMOJI_LIST = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+
+// Track user's own reactions in localStorage: { "msgId_emoji": true }
+function getMyReactions() {
+  try { return JSON.parse(localStorage.getItem('fgfess_reactions') || '{}'); }
+  catch { return {}; }
+}
+function setMyReaction(msgId, emoji, active) {
+  const key = `${msgId}_${emoji}`;
+  const my = getMyReactions();
+  if (active) my[key] = true; else delete my[key];
+  localStorage.setItem('fgfess_reactions', JSON.stringify(my));
+}
+function hasMyReaction(msgId, emoji) {
+  return !!getMyReactions()[`${msgId}_${emoji}`];
+}
+
+let openPickerId = null;  // currently open picker's msgId
+
+function toggleReactionPicker(msgId, triggerBtn) {
+  // Close existing picker if open
+  closeAllPickers();
+
+  if (openPickerId === msgId) {
+    openPickerId = null;
+    triggerBtn.classList.remove('picker-open');
+    return;
+  }
+
+  openPickerId = msgId;
+  triggerBtn.classList.add('picker-open');
+
+  // Build picker
+  const picker = document.createElement('div');
+  picker.className = 'emoji-picker-popup';
+  picker.id = `picker-${msgId}`;
+
+  EMOJI_LIST.forEach(emoji => {
+    const btn = document.createElement('button');
+    btn.className = 'emoji-picker-btn';
+    if (hasMyReaction(msgId, emoji)) btn.classList.add('already-reacted');
+    btn.textContent = emoji;
+    btn.title = emoji;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      sendReaction(msgId, emoji);
+      closeAllPickers();
+    };
+    picker.appendChild(btn);
+  });
+
+  // Position relative to trigger button
+  const card = document.getElementById(`msg-${msgId}`);
+  const meta = card ? card.querySelector('.message-meta') : null;
+  if (meta) {
+    meta.style.position = 'relative';
+    meta.appendChild(picker);
+
+    // Ensure picker doesn't overflow right edge
+    const pickerRect = picker.getBoundingClientRect();
+    if (pickerRect.right > window.innerWidth - 8) {
+      picker.style.right = '0';
+      picker.style.left = 'auto';
+    }
+    // Position above the meta bar
+    picker.style.bottom = '130%';
+    picker.style.left = picker.style.left || '0';
+  }
+
+  // Close when clicking outside
+  setTimeout(() => {
+    document.addEventListener('click', onOutsidePickerClick, { once: true });
+  }, 10);
+}
+
+function onOutsidePickerClick(e) {
+  if (!e.target.closest('.emoji-picker-popup') && !e.target.closest('.reaction-trigger-btn')) {
+    closeAllPickers();
+  }
+}
+
+function closeAllPickers() {
+  document.querySelectorAll('.emoji-picker-popup').forEach(p => p.remove());
+  document.querySelectorAll('.reaction-trigger-btn.picker-open').forEach(b => b.classList.remove('picker-open'));
+  openPickerId = null;
+  document.removeEventListener('click', onOutsidePickerClick);
+}
+
+async function sendReaction(msgId, emoji) {
+  const wasReacted = hasMyReaction(msgId, emoji);
+
+  // Optimistic update
+  setMyReaction(msgId, emoji, !wasReacted);
+  const bar = document.getElementById(`reactions-${msgId}`);
+  if (bar) {
+    // Temporarily update chip count optimistically
+    const existingChip = bar.querySelector(`[data-emoji="${CSS.escape(emoji)}"]`);
+    if (existingChip) {
+      const countEl = existingChip.querySelector('.chip-count');
+      const current = parseInt(countEl?.textContent || '0');
+      if (wasReacted) {
+        const newCount = current - 1;
+        if (newCount <= 0) existingChip.remove();
+        else if (countEl) countEl.textContent = newCount;
+      } else {
+        if (countEl) countEl.textContent = current + 1;
+        existingChip.classList.add('my-reaction');
+        triggerBurst(existingChip);
+      }
+    } else if (!wasReacted) {
+      // New chip
+      renderReactionBar(bar, msgId, { [emoji]: 1 });
+    }
+  }
+
+  try {
+    const res = await fetch(`/api/messages/${msgId}/react`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emoji })
+    });
+    const data = await res.json();
+    if (data.success) {
+      // Sync with server truth
+      renderReactionBar(bar, msgId, data.reactions);
+    } else {
+      // Revert optimistic
+      setMyReaction(msgId, emoji, wasReacted);
+      showToast('Gagal menambahkan reaksi.', 'error');
+    }
+  } catch {
+    setMyReaction(msgId, emoji, wasReacted);
+    showToast('Gagal menambahkan reaksi.', 'error');
+  }
+}
+
+/**
+ * Render/update the reactions bar for a message.
+ * @param {HTMLElement|null} bar  - the .reactions-bar element
+ * @param {number}  msgId         - message id
+ * @param {Object}  reactions     - {emoji: count} from server
+ */
+function renderReactionBar(bar, msgId, reactions) {
+  if (!bar) bar = document.getElementById(`reactions-${msgId}`);
+  if (!bar) return;
+
+  // Filter out zero counts
+  const entries = Object.entries(reactions).filter(([, c]) => c > 0);
+
+  if (entries.length === 0) {
+    bar.innerHTML = '';
+    return;
+  }
+
+  // Sort by EMOJI_LIST order for consistent display
+  entries.sort(([a], [b]) => EMOJI_LIST.indexOf(a) - EMOJI_LIST.indexOf(b));
+
+  // Build new chips, preserve burst animation for changed chips
+  const newHtml = entries.map(([emoji, count]) => {
+    const mine = hasMyReaction(msgId, emoji);
+    return `<button class="reaction-chip${mine ? ' my-reaction' : ''}"
+              data-emoji="${emoji}" data-msg="${msgId}"
+              onclick="sendReaction(${msgId}, '${emoji}')"
+              title="${emoji}">
+              <span class="chip-emoji">${emoji}</span>
+              <span class="chip-count">${count}</span>
+            </button>`;
+  }).join('');
+
+  bar.innerHTML = newHtml;
+}
+
+function triggerBurst(el) {
+  el.classList.remove('burst');
+  void el.offsetWidth; // reflow
+  el.classList.add('burst');
+  el.addEventListener('animationend', () => el.classList.remove('burst'), { once: true });
+}
+
 // ─── Hashtag System ───────────────────────────────────────────────────────────
+
 
 let activeHashtag = null;
 
@@ -1201,4 +1383,12 @@ if (currentPage === 1) {
   // On other pages, still render hashtag chips but no sidebar fetch
   const sidebar = document.getElementById('hashtagSidebar');
   if (sidebar) sidebar.style.display = 'none';
+}
+
+// Render initial reactions on page load
+if (window.INITIAL_REACTIONS) {
+  Object.entries(window.INITIAL_REACTIONS).forEach(([msgId, reactions]) => {
+    const bar = document.getElementById(`reactions-${msgId}`);
+    if (bar) renderReactionBar(bar, parseInt(msgId), reactions);
+  });
 }
