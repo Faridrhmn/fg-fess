@@ -102,6 +102,141 @@ function removeImage() {
   }
 }
 
+// ─── Text Formatting Toolbar ──────────────────────────────────────────────────
+
+function applyFormat(type) {
+  const textarea = document.getElementById('messageInput');
+  if (!textarea) return;
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const text = textarea.value;
+  const selected = text.substring(start, end);
+
+  let prefix = '';
+  let suffix = '';
+  let placeholder = '';
+
+  if (type === 'bold') {
+    prefix = '*'; suffix = '*'; placeholder = 'teks tebal';
+  } else if (type === 'italic') {
+    prefix = '_'; suffix = '_'; placeholder = 'teks miring';
+  } else if (type === 'underline') {
+    prefix = '__'; suffix = '__'; placeholder = 'garis bawah';
+  } else if (type === 'strike') {
+    prefix = '~'; suffix = '~'; placeholder = 'teks coret';
+  }
+
+  if (selected.length > 0) {
+    if (selected.startsWith(prefix) && selected.endsWith(suffix) && selected.length >= (prefix.length + suffix.length)) {
+      const unwrapped = selected.slice(prefix.length, -suffix.length);
+      textarea.value = text.substring(0, start) + unwrapped + text.substring(end);
+      textarea.setSelectionRange(start, start + unwrapped.length);
+    } else {
+      const wrapped = prefix + selected + suffix;
+      textarea.value = text.substring(0, start) + wrapped + text.substring(end);
+      textarea.setSelectionRange(start, start + wrapped.length);
+    }
+  } else {
+    const wrapped = prefix + placeholder + suffix;
+    textarea.value = text.substring(0, start) + wrapped + text.substring(end);
+    textarea.setSelectionRange(start + prefix.length, start + prefix.length + placeholder.length);
+  }
+
+  textarea.focus();
+  textarea.dispatchEvent(new Event('input'));
+}
+
+// ─── Poll Creator Management ──────────────────────────────────────────────────
+let pollActive = false;
+
+function togglePollCreator() {
+  const section = document.getElementById('pollCreatorSection');
+  const btn = document.getElementById('pollToggleBtn');
+  if (!section) return;
+
+  pollActive = !pollActive;
+  if (pollActive) {
+    section.style.display = 'block';
+    if (btn) btn.classList.add('active');
+    const firstInput = section.querySelector('.poll-option-input');
+    if (firstInput) firstInput.focus();
+  } else {
+    cancelPoll();
+  }
+}
+
+function cancelPoll() {
+  const section = document.getElementById('pollCreatorSection');
+  const btn = document.getElementById('pollToggleBtn');
+  if (!section) return;
+
+  pollActive = false;
+  section.style.display = 'none';
+  if (btn) btn.classList.remove('active');
+
+  const list = document.getElementById('pollOptionsList');
+  if (list) {
+    list.innerHTML = `
+      <div class="poll-option-row">
+        <input type="text" class="poll-option-input" placeholder="Pilihan 1" maxlength="80">
+      </div>
+      <div class="poll-option-row">
+        <input type="text" class="poll-option-input" placeholder="Pilihan 2" maxlength="80">
+      </div>
+    `;
+  }
+  const addBtn = document.getElementById('btnAddPollOption');
+  if (addBtn) addBtn.style.display = 'inline-block';
+}
+
+function addPollOption() {
+  const list = document.getElementById('pollOptionsList');
+  if (!list) return;
+
+  const count = list.querySelectorAll('.poll-option-row').length;
+  if (count >= 5) {
+    showToast('Maksimal 5 pilihan polling.', 'info');
+    return;
+  }
+
+  const row = document.createElement('div');
+  row.className = 'poll-option-row';
+  row.innerHTML = `
+    <input type="text" class="poll-option-input" placeholder="Pilihan ${count + 1}" maxlength="80">
+    <button type="button" class="btn-remove-option" onclick="removePollOption(this)" title="Hapus pilihan">&times;</button>
+  `;
+  list.appendChild(row);
+
+  const input = row.querySelector('.poll-option-input');
+  if (input) input.focus();
+
+  if (count + 1 >= 5) {
+    const addBtn = document.getElementById('btnAddPollOption');
+    if (addBtn) addBtn.style.display = 'none';
+  }
+}
+
+function removePollOption(btn) {
+  const row = btn.closest('.poll-option-row');
+  if (!row) return;
+  row.remove();
+
+  const addBtn = document.getElementById('btnAddPollOption');
+  if (addBtn) addBtn.style.display = 'inline-block';
+}
+
+function getPollOptionsData() {
+  if (!pollActive) return null;
+  const inputs = document.querySelectorAll('#pollOptionsList .poll-option-input');
+  const options = [];
+  inputs.forEach(input => {
+    const val = input.value.trim();
+    if (val) options.push(val);
+  });
+  return options;
+}
+
 // ─── Submit Message ───────────────────────────────────────────────────────────
 
 async function submitMessage() {
@@ -133,6 +268,17 @@ async function submitMessage() {
       formData.append('image', imageInput.files[0]);
     }
 
+    const pollOpts = getPollOptionsData();
+    if (pollActive && pollOpts) {
+      if (pollOpts.length < 2) {
+        showFeedback(feedback, 'error', 'Polling minimal harus memiliki 2 pilihan.');
+        btn.disabled = false;
+        btn.querySelector('.btn-text').textContent = 'Kirim';
+        return;
+      }
+      formData.append('poll_options', JSON.stringify(pollOpts));
+    }
+
     const res  = await fetch('/api/submit', {
       method:  'POST',
       body:    formData
@@ -145,6 +291,7 @@ async function submitMessage() {
     }
 
     input.value = '';
+    cancelPoll();
     if (counter) {
       counter.textContent = '0 / 500';
       counter.classList.remove('near-limit', 'at-limit');
@@ -283,6 +430,14 @@ socket.on('update_reaction', (data) => {
   }
 });
 
+socket.on('update_poll', (poll) => {
+  if (!poll || !poll.message_id) return;
+  const container = document.getElementById(`poll-${poll.message_id}`);
+  if (container) {
+    renderPoll(container, poll.message_id, poll);
+  }
+});
+
 socket.on('message_deleted', (data) => {
   if (data.total !== undefined) {
     updateCount(data.total, data.unpinned_total);
@@ -355,6 +510,7 @@ function injectMessageCard(msg, highlight) {
     ${pinnedBadge}
     <p class="message-text" data-raw="${escapeHtml(msg.content)}">${renderMessageContent(msg.content)}</p>
     ${msg.image_filename ? `<div class="message-image-container" style="margin-top: 12px;"><img src="/static/uploads/${msg.image_filename}" alt="Uploaded Image" style="max-width: 100%; max-height: 400px; border-radius: var(--radius); border: 1px solid var(--border);"></div>` : ''}
+    <div class="poll-container" id="poll-${msg.id}"></div>
     <div class="message-meta">
       <time class="message-time">${msg.time}</time>
       <div class="meta-actions">
@@ -425,6 +581,11 @@ function injectMessageCard(msg, highlight) {
   if (msg.reactions && Object.keys(msg.reactions).length > 0) {
     const bar = card.querySelector('.reactions-bar');
     if (bar) renderReactionBar(bar, msg.id, msg.reactions);
+  }
+
+  if (msg.poll) {
+    const pollContainer = card.querySelector(`#poll-${msg.id}`);
+    if (pollContainer) renderPoll(pollContainer, msg.id, msg.poll);
   }
   
   // Re-apply vote states for injected message
@@ -560,23 +721,131 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-/**
- * Render text with #hashtag links. Escapes HTML first, then makes chips clickable.
- */
-function renderMessageContent(rawText) {
-  const escaped = escapeHtml(rawText);
-  return escaped.replace(/(^|[\s\n])(#(\w+))/g, (match, pre, full, tag) => {
-    return `${pre}<span class="hashtag-chip" onclick="filterByHashtag('${tag.toLowerCase()}')">${full}</span>`;
-  });
+// ─── Poll Rendering & Voting ──────────────────────────────────────────────────
+
+function renderPoll(container, msgId, pollData) {
+  if (!container || !pollData || !pollData.options) return;
+
+  const totalVotes = pollData.total_votes || 0;
+
+  // User choice resolution (preserve client's choice during broadcast events)
+  let userVotedOptionId = pollData.user_voted_option_id;
+  if (userVotedOptionId !== undefined && userVotedOptionId !== null) {
+    localStorage.setItem(`voted_poll_${pollData.id}`, String(userVotedOptionId));
+  } else {
+    const saved = localStorage.getItem(`voted_poll_${pollData.id}`);
+    userVotedOptionId = saved ? parseInt(saved) : null;
+  }
+  const hasVoted = Boolean(userVotedOptionId);
+
+  const optionsHtml = pollData.options.map(opt => {
+    const pct = totalVotes > 0 ? Math.round((opt.vote_count / totalVotes) * 100) : 0;
+    const isChosen = userVotedOptionId === opt.id;
+    return `
+      <div class="poll-option-item ${hasVoted ? 'poll-option-voted' : ''} ${isChosen ? 'poll-option-chosen' : ''}"
+           ${!isChosen ? `onclick="votePoll(${pollData.id}, ${opt.id}, ${msgId})"` : ''}
+           role="button" tabindex="0">
+        <div class="poll-option-bar" style="width: ${hasVoted ? pct : 0}%;"></div>
+        <div class="poll-option-content">
+          <div class="poll-option-label">
+            ${isChosen ? '<span class="poll-chosen-check">✓</span>' : '<span class="poll-radio-dot"></span>'}
+            <span class="poll-option-text">${escapeHtml(opt.text)}</span>
+          </div>
+          <div class="poll-option-stats ${hasVoted ? 'visible' : ''}">
+            <span class="poll-option-pct">${pct}%</span>
+            <span class="poll-option-count">(${opt.vote_count})</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const voteLabel = totalVotes === 1 ? '1 suara' : `${totalVotes} suara`;
+
+  container.innerHTML = `
+    <div class="poll-box" id="poll-box-${pollData.id}">
+      <div class="poll-options-wrapper">
+        ${optionsHtml}
+      </div>
+      <div class="poll-footer-meta">
+        <span class="poll-total-count">${voteLabel}</span>
+        ${hasVoted ? '<span class="poll-voted-badge">Sudah memilih <span style="opacity: 0.6; font-weight: normal; font-size: 0.75rem;">(klik opsi lain untuk ubah)</span></span>' : '<span class="poll-hint-tap">Klik pilihan untuk memilih</span>'}
+      </div>
+    </div>
+  `;
 }
 
-// ─── Ctrl+Enter Shortcut ─────────────────────────────────────────────────────
+async function votePoll(pollId, optionId, msgId) {
+  try {
+    const hadVoted = Boolean(localStorage.getItem(`voted_poll_${pollId}`));
+    const res = await fetch(`/api/polls/${pollId}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ option_id: optionId })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || 'Gagal memberikan suara.', 'error');
+      return;
+    }
+
+    localStorage.setItem(`voted_poll_${pollId}`, String(optionId));
+    showToast(hadVoted ? 'Pilihan berhasil diubah!' : 'Suara berhasil dicatat!', 'success');
+
+    const container = document.getElementById(`poll-${msgId}`);
+    if (container && data.poll) {
+      renderPoll(container, msgId, data.poll);
+    }
+  } catch (err) {
+    showToast('Terjadi kesalahan jaringan.', 'error');
+  }
+}
+
+/**
+ * Render text with formatting (bold, italic, underline, strikethrough) and #hashtags.
+ */
+function renderMessageContent(rawText) {
+  if (!rawText) return '';
+  let str = escapeHtml(rawText);
+
+  // 1. Underline: __text__
+  str = str.replace(/__([^\n_]+?)__/g, '<u>$1</u>');
+
+  // 2. Bold: **text** or *text*
+  str = str.replace(/\*\*([^\n\*]+?)\*\*/g, '<strong>$1</strong>');
+  str = str.replace(/(^|[^\*\w])\*([^\n\*\s](?:[^\n\*]*?[^\n\*\s])?)\*(?=[^\*\w]|$)/g, '$1<strong>$2</strong>');
+
+  // 3. Italic: _text_
+  str = str.replace(/(^|[^_\w])_([^\n_\s](?:[^\n_]*?[^\n_\s])?)_(?=[^_\w]|$)/g, '$1<em>$2</em>');
+
+  // 4. Strikethrough: ~~text~~ or ~text~
+  str = str.replace(/~~([^\n~]+?)~~/g, '<del>$1</del>');
+  str = str.replace(/(^|[^~\w])~([^\n~\s](?:[^\n~]*?[^\n~\s])?)~(?=[^~\w]|$)/g, '$1<del>$2</del>');
+
+  // 5. Hashtags
+  str = str.replace(/(^|[\s\n])(#(\w+))/g, (match, pre, full, tag) => {
+    return `${pre}<span class="hashtag-chip" onclick="filterByHashtag('${tag.toLowerCase()}')">${full}</span>`;
+  });
+
+  return str;
+}
+
+// ─── Shortcuts (Ctrl+Enter, Ctrl+B, Ctrl+I, Ctrl+U) ───────────────────────────
 
 if (textarea) {
   textarea.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
       submitMessage();
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      applyFormat('bold');
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'i' || e.key === 'I')) {
+      e.preventDefault();
+      applyFormat('italic');
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U')) {
+      e.preventDefault();
+      applyFormat('underline');
     }
   });
 }
@@ -651,7 +920,7 @@ function buildReplyCard(reply, isNew = false) {
     <div class="reply-card${isNew ? ' new-reply' : ''}" id="reply-${reply.id}" data-id="${reply.id}">
       <div class="reply-avatar">anon</div>
       <div class="reply-bubble">
-        <p class="reply-text">${escapeHtml(reply.content)}</p>
+        <p class="reply-text">${renderMessageContent(reply.content)}</p>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
           <time class="reply-time" style="margin-top: 0;">${reply.time}</time>
           <span class="user-delete-container" id="user-del-${reply.id}"></span>
@@ -1390,5 +1659,13 @@ if (window.INITIAL_REACTIONS) {
   Object.entries(window.INITIAL_REACTIONS).forEach(([msgId, reactions]) => {
     const bar = document.getElementById(`reactions-${msgId}`);
     if (bar) renderReactionBar(bar, parseInt(msgId), reactions);
+  });
+}
+
+// Render initial polls on page load
+if (window.INITIAL_POLLS) {
+  Object.entries(window.INITIAL_POLLS).forEach(([msgId, pollData]) => {
+    const container = document.getElementById(`poll-${msgId}`);
+    if (container && pollData) renderPoll(container, parseInt(msgId), pollData);
   });
 }

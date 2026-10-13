@@ -165,6 +165,33 @@ class MessageReaction(db.Model):
     # Ensure one reaction per emoji per IP per message
     __table_args__ = (db.UniqueConstraint('message_id', 'emoji', 'client_ip', name='uq_reaction'),)
 
+class Poll(db.Model):
+    __tablename__ = 'poll'
+    id         = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('message.id', ondelete='CASCADE'), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=get_wib_time)
+
+    message = db.relationship('Message', backref=db.backref('poll', uselist=False, cascade='all, delete'))
+    options = db.relationship('PollOption', backref='poll', lazy=True, cascade='all, delete-orphan', order_by='PollOption.id')
+    votes   = db.relationship('PollVote', backref='poll', lazy=True, cascade='all, delete-orphan')
+
+class PollOption(db.Model):
+    __tablename__ = 'poll_option'
+    id         = db.Column(db.Integer, primary_key=True)
+    poll_id    = db.Column(db.Integer, db.ForeignKey('poll.id', ondelete='CASCADE'), nullable=False)
+    text       = db.Column(db.String(100), nullable=False)
+    vote_count = db.Column(db.Integer, default=0)
+
+class PollVote(db.Model):
+    __tablename__ = 'poll_vote'
+    id         = db.Column(db.Integer, primary_key=True)
+    poll_id    = db.Column(db.Integer, db.ForeignKey('poll.id', ondelete='CASCADE'), nullable=False)
+    option_id  = db.Column(db.Integer, db.ForeignKey('poll_option.id', ondelete='CASCADE'), nullable=False)
+    client_ip  = db.Column(db.String(45), nullable=False)
+    timestamp  = db.Column(db.DateTime, default=get_wib_time)
+
+    __table_args__ = (db.UniqueConstraint('poll_id', 'client_ip', name='uq_poll_vote'),)
+
 class Feedback(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
@@ -211,8 +238,10 @@ def index():
     
     visible_ids = [m.id for m in pinned_messages] + [m.id for m in messages.items]
     reaction_counts = _get_reactions_bulk(visible_ids)
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    polls = _get_polls_bulk(visible_ids, client_ip)
     
-    return render_template('index.html', messages=messages, pinned_messages=pinned_messages, reaction_counts=reaction_counts)
+    return render_template('index.html', messages=messages, pinned_messages=pinned_messages, reaction_counts=reaction_counts, polls=polls)
 
 def get_city_from_ip(ip):
     if ip in ('127.0.0.1', 'localhost', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
@@ -269,6 +298,24 @@ def submit_message():
         if not parent or parent.is_hidden or parent.parent_id is not None:
             return jsonify({'error': 'Pesan induk tidak valid.'}), 400
 
+    # Poll validation
+    poll_options_raw = data.get('poll_options')
+    poll_options = []
+    if poll_options_raw and not parent_id:
+        if isinstance(poll_options_raw, str):
+            try:
+                poll_options = json.loads(poll_options_raw)
+            except Exception:
+                poll_options = []
+        elif isinstance(poll_options_raw, list):
+            poll_options = poll_options_raw
+
+        poll_options = [str(opt).strip()[:80] for opt in poll_options if str(opt).strip()]
+        if len(poll_options) == 1:
+            return jsonify({'error': 'Polling minimal harus memiliki 2 pilihan.'}), 400
+        if len(poll_options) > 5:
+            poll_options = poll_options[:5]
+
     import uuid
     secret_token = str(uuid.uuid4())
     location = get_city_from_ip(client_ip)
@@ -306,11 +353,23 @@ def submit_message():
     
     new_msg = Message(content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token, location=location, image_filename=image_filename)
     db.session.add(new_msg)
+
+    poll_obj = None
+    if not parent_id and len(poll_options) >= 2:
+        poll_obj = Poll(message=new_msg)
+        db.session.add(poll_obj)
+        for opt_text in poll_options:
+            opt = PollOption(poll=poll_obj, text=opt_text, vote_count=0)
+            db.session.add(opt)
+
     db.session.commit()
 
     # Total only counts top-level visible messages
     total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
     unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
+
+    poll_dict = _format_poll_dict(poll_obj, client_ip) if poll_obj else None
+    poll_dict_public = _format_poll_dict(poll_obj, None) if poll_obj else None
 
     resp = {
         'success':   True,
@@ -329,7 +388,8 @@ def submit_message():
             'is_pinned':   False,
             'secret_token': secret_token,
             'timestamp_ms': int(new_msg.timestamp.timestamp() * 1000),
-            'image_filename': image_filename
+            'image_filename': image_filename,
+            'poll':        poll_dict
         }
     }
     if parent_id:
@@ -344,6 +404,7 @@ def submit_message():
         # Omit secret_token for broadcast
         public_msg = resp['message'].copy()
         public_msg.pop('secret_token', None)
+        public_msg['poll'] = poll_dict_public
         
         # Also include total stats for top-level message events
         socketio.emit('new_message', {
@@ -472,6 +533,8 @@ def get_messages():
 
     msg_ids = [m.id for m in msgs]
     reactions = _get_reactions_bulk(msg_ids)
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    polls = _get_polls_bulk(msg_ids, client_ip)
 
     return jsonify({
         'messages': [
@@ -486,7 +549,8 @@ def get_messages():
                 'downvotes':   m.downvotes,
                 'is_pinned':   m.is_pinned,
                 'image_filename': m.image_filename,
-                'reactions':   reactions.get(m.id, {})
+                'reactions':   reactions.get(m.id, {}),
+                'poll':        polls.get(m.id)
             }
             for m in msgs
         ],
@@ -502,6 +566,9 @@ def get_messages_by_ids():
         return jsonify({'messages': []})
         
     msgs = Message.query.filter(Message.id.in_(ids)).all()
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    polls = _get_polls_bulk([m.id for m in msgs], client_ip)
+
     return jsonify({
         'messages': [
             {
@@ -512,7 +579,8 @@ def get_messages_by_ids():
                 'date_label':  fmt_date_id(m.timestamp),
                 'reply_count': m.visible_reply_count,
                 'parent_id':   m.parent_id,
-                'image_filename': m.image_filename
+                'image_filename': m.image_filename,
+                'poll':        polls.get(m.id)
             }
             for m in msgs
         ]
@@ -578,6 +646,132 @@ def react_message(msg_id):
     counts = _get_reaction_counts(msg_id)
     socketio.emit('update_reaction', {'id': msg_id, 'reactions': counts})
     return jsonify({'success': True, 'action': action, 'reactions': counts})
+
+
+@app.route('/api/polls/<int:poll_id>/vote', methods=['POST'])
+def vote_poll(poll_id):
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    poll = Poll.query.get_or_404(poll_id)
+
+    data = request.get_json() or {}
+    option_id = data.get('option_id')
+    if not option_id:
+        return jsonify({'error': 'Pilihan tidak valid.'}), 400
+
+    option = PollOption.query.filter_by(id=option_id, poll_id=poll.id).first()
+    if not option:
+        return jsonify({'error': 'Pilihan tidak ditemukan.'}), 404
+
+    existing_vote = PollVote.query.filter_by(poll_id=poll.id, client_ip=client_ip).first()
+    if existing_vote:
+        if existing_vote.option_id == option.id:
+            # Clicked the same option they already picked
+            poll_user = _format_poll_dict(poll, client_ip)
+            return jsonify({'success': True, 'poll': poll_user, 'message': 'Kamu sudah memilih opsi ini.'})
+
+        # Change vote to the newly selected option
+        old_option = PollOption.query.filter_by(id=existing_vote.option_id, poll_id=poll.id).first()
+        if old_option and old_option.vote_count > 0:
+            old_option.vote_count -= 1
+        existing_vote.option_id = option.id
+        existing_vote.timestamp = get_wib_time()
+        option.vote_count += 1
+        db.session.commit()
+    else:
+        try:
+            vote = PollVote(poll_id=poll.id, option_id=option.id, client_ip=client_ip)
+            option.vote_count += 1
+            db.session.add(vote)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': 'Gagal mencatat suara.'}), 500
+
+    # Format updated poll for public broadcast and for user response
+    poll_public = _format_poll_dict(poll, None)
+    socketio.emit('update_poll', poll_public)
+
+    poll_user = _format_poll_dict(poll, client_ip)
+    return jsonify({'success': True, 'poll': poll_user})
+
+
+def _format_poll_dict(poll, client_ip=None):
+    if not poll:
+        return None
+    # Calculate vote counts dynamically from PollVote
+    vote_rows = db.session.query(
+        PollVote.option_id, db.func.count(PollVote.id)
+    ).filter(PollVote.poll_id == poll.id).group_by(PollVote.option_id).all()
+    vote_counts = dict(vote_rows)
+    total_votes = sum(vote_counts.values())
+
+    user_voted_option_id = None
+    if client_ip:
+        user_vote = PollVote.query.filter_by(poll_id=poll.id, client_ip=client_ip).first()
+        if user_vote:
+            user_voted_option_id = user_vote.option_id
+
+    return {
+        'id': poll.id,
+        'message_id': poll.message_id,
+        'total_votes': total_votes,
+        'user_voted_option_id': user_voted_option_id,
+        'options': [
+            {
+                'id': opt.id,
+                'text': opt.text,
+                'vote_count': vote_counts.get(opt.id, 0),
+                'percentage': round((vote_counts.get(opt.id, 0) / total_votes * 100), 1) if total_votes > 0 else 0
+            }
+            for opt in poll.options
+        ]
+    }
+
+
+def _get_polls_bulk(msg_ids, client_ip=None):
+    if not msg_ids:
+        return {}
+    polls = Poll.query.filter(Poll.message_id.in_(msg_ids)).all()
+    if not polls:
+        return {}
+
+    poll_ids = [p.id for p in polls]
+
+    # Fetch all vote counts for these polls in one efficient query
+    vote_rows = db.session.query(
+        PollVote.poll_id, PollVote.option_id, db.func.count(PollVote.id)
+    ).filter(PollVote.poll_id.in_(poll_ids)).group_by(PollVote.poll_id, PollVote.option_id).all()
+
+    poll_vote_counts = {}
+    for pid, opt_id, cnt in vote_rows:
+        poll_vote_counts.setdefault(pid, {})[opt_id] = cnt
+
+    user_votes = {}
+    if client_ip:
+        votes = PollVote.query.filter(PollVote.poll_id.in_(poll_ids), PollVote.client_ip == client_ip).all()
+        for v in votes:
+            user_votes[v.poll_id] = v.option_id
+
+    result = {}
+    for poll in polls:
+        counts = poll_vote_counts.get(poll.id, {})
+        total_votes = sum(counts.values())
+        result[poll.message_id] = {
+            'id': poll.id,
+            'message_id': poll.message_id,
+            'total_votes': total_votes,
+            'user_voted_option_id': user_votes.get(poll.id),
+            'options': [
+                {
+                    'id': opt.id,
+                    'text': opt.text,
+                    'vote_count': counts.get(opt.id, 0),
+                    'percentage': round((counts.get(opt.id, 0) / total_votes * 100), 1) if total_votes > 0 else 0
+                }
+                for opt in poll.options
+            ]
+        }
+    return result
 
 
 
