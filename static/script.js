@@ -775,13 +775,40 @@ function renderPoll(container, msgId, pollData) {
   `;
 }
 
+// ─── Unique Device/Browser Voter Token ────────────────────────────────────────
+
+function getOrCreateVoterToken() {
+  let token = localStorage.getItem('fgfess_voter_id');
+  if (!token) {
+    token = 'vtr_' + 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+    localStorage.setItem('fgfess_voter_id', token);
+  }
+  if (!document.cookie.includes('fgfess_voter_id=')) {
+    document.cookie = `fgfess_voter_id=${token}; path=/; max-age=31536000; SameSite=Lax`;
+  }
+  return token;
+}
+
+// Ensure token initialized
+getOrCreateVoterToken();
+
 async function votePoll(pollId, optionId, msgId) {
   try {
+    const voterToken = getOrCreateVoterToken();
     const hadVoted = Boolean(localStorage.getItem(`voted_poll_${pollId}`));
     const res = await fetch(`/api/polls/${pollId}/vote`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ option_id: optionId })
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Voter-Token': voterToken
+      },
+      body: JSON.stringify({
+        option_id: optionId,
+        voter_token: voterToken
+      })
     });
     const data = await res.json();
     if (!res.ok) {
@@ -789,6 +816,9 @@ async function votePoll(pollId, optionId, msgId) {
       return;
     }
 
+    if (data.voter_token) {
+      localStorage.setItem('fgfess_voter_id', data.voter_token);
+    }
     localStorage.setItem(`voted_poll_${pollId}`, String(optionId));
     showToast(hadVoted ? 'Pilihan berhasil diubah!' : 'Suara berhasil dicatat!', 'success');
 

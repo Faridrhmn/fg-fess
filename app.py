@@ -184,13 +184,14 @@ class PollOption(db.Model):
 
 class PollVote(db.Model):
     __tablename__ = 'poll_vote'
-    id         = db.Column(db.Integer, primary_key=True)
-    poll_id    = db.Column(db.Integer, db.ForeignKey('poll.id', ondelete='CASCADE'), nullable=False)
-    option_id  = db.Column(db.Integer, db.ForeignKey('poll_option.id', ondelete='CASCADE'), nullable=False)
-    client_ip  = db.Column(db.String(45), nullable=False)
-    timestamp  = db.Column(db.DateTime, default=get_wib_time)
+    id          = db.Column(db.Integer, primary_key=True)
+    poll_id     = db.Column(db.Integer, db.ForeignKey('poll.id', ondelete='CASCADE'), nullable=False)
+    option_id   = db.Column(db.Integer, db.ForeignKey('poll_option.id', ondelete='CASCADE'), nullable=False)
+    voter_token = db.Column(db.String(64), nullable=False)
+    client_ip   = db.Column(db.String(45), nullable=True)
+    timestamp   = db.Column(db.DateTime, default=get_wib_time)
 
-    __table_args__ = (db.UniqueConstraint('poll_id', 'client_ip', name='uq_poll_vote'),)
+    __table_args__ = (db.UniqueConstraint('poll_id', 'voter_token', name='uq_poll_vote_token'),)
 
 class Feedback(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -238,10 +239,20 @@ def index():
     
     visible_ids = [m.id for m in pinned_messages] + [m.id for m in messages.items]
     reaction_counts = _get_reactions_bulk(visible_ids)
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
-    polls = _get_polls_bulk(visible_ids, client_ip)
-    
-    return render_template('index.html', messages=messages, pinned_messages=pinned_messages, reaction_counts=reaction_counts, polls=polls)
+    voter_token = request.cookies.get('fgfess_voter_id') or request.headers.get('X-Voter-Token')
+    needs_cookie = False
+    if not voter_token:
+        import uuid
+        voter_token = f"vtr_{uuid.uuid4().hex}"
+        needs_cookie = True
+
+    polls = _get_polls_bulk(visible_ids, voter_token)
+
+    rendered = render_template('index.html', messages=messages, pinned_messages=pinned_messages, reaction_counts=reaction_counts, polls=polls)
+    resp = app.make_response(rendered)
+    if needs_cookie:
+        resp.set_cookie('fgfess_voter_id', voter_token, max_age=31536000, samesite='Lax')
+    return resp
 
 def get_city_from_ip(ip):
     if ip in ('127.0.0.1', 'localhost', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
@@ -368,7 +379,8 @@ def submit_message():
     total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
     unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
 
-    poll_dict = _format_poll_dict(poll_obj, client_ip) if poll_obj else None
+    voter_token = request.cookies.get('fgfess_voter_id') or request.headers.get('X-Voter-Token')
+    poll_dict = _format_poll_dict(poll_obj, voter_token) if poll_obj else None
     poll_dict_public = _format_poll_dict(poll_obj, None) if poll_obj else None
 
     resp = {
@@ -533,8 +545,8 @@ def get_messages():
 
     msg_ids = [m.id for m in msgs]
     reactions = _get_reactions_bulk(msg_ids)
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
-    polls = _get_polls_bulk(msg_ids, client_ip)
+    voter_token = request.cookies.get('fgfess_voter_id') or request.headers.get('X-Voter-Token')
+    polls = _get_polls_bulk(msg_ids, voter_token)
 
     return jsonify({
         'messages': [
@@ -566,8 +578,8 @@ def get_messages_by_ids():
         return jsonify({'messages': []})
         
     msgs = Message.query.filter(Message.id.in_(ids)).all()
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
-    polls = _get_polls_bulk([m.id for m in msgs], client_ip)
+    voter_token = request.cookies.get('fgfess_voter_id') or request.headers.get('X-Voter-Token')
+    polls = _get_polls_bulk([m.id for m in msgs], voter_token)
 
     return jsonify({
         'messages': [
@@ -662,24 +674,33 @@ def vote_poll(poll_id):
     if not option:
         return jsonify({'error': 'Pilihan tidak ditemukan.'}), 404
 
-    existing_vote = PollVote.query.filter_by(poll_id=poll.id, client_ip=client_ip).first()
+    # Resolve unique device/browser voter token
+    voter_token = data.get('voter_token') or request.cookies.get('fgfess_voter_id') or request.headers.get('X-Voter-Token')
+    if not voter_token:
+        import uuid
+        voter_token = f"vtr_{uuid.uuid4().hex}"
+
+    existing_vote = PollVote.query.filter_by(poll_id=poll.id, voter_token=voter_token).first()
     if existing_vote:
         if existing_vote.option_id == option.id:
             # Clicked the same option they already picked
-            poll_user = _format_poll_dict(poll, client_ip)
-            return jsonify({'success': True, 'poll': poll_user, 'message': 'Kamu sudah memilih opsi ini.'})
+            poll_user = _format_poll_dict(poll, voter_token)
+            resp = jsonify({'success': True, 'poll': poll_user, 'voter_token': voter_token, 'message': 'Kamu sudah memilih opsi ini.'})
+            resp.set_cookie('fgfess_voter_id', voter_token, max_age=31536000, samesite='Lax')
+            return resp
 
         # Change vote to the newly selected option
         old_option = PollOption.query.filter_by(id=existing_vote.option_id, poll_id=poll.id).first()
         if old_option and old_option.vote_count > 0:
             old_option.vote_count -= 1
         existing_vote.option_id = option.id
+        existing_vote.client_ip = client_ip
         existing_vote.timestamp = get_wib_time()
         option.vote_count += 1
         db.session.commit()
     else:
         try:
-            vote = PollVote(poll_id=poll.id, option_id=option.id, client_ip=client_ip)
+            vote = PollVote(poll_id=poll.id, option_id=option.id, voter_token=voter_token, client_ip=client_ip)
             option.vote_count += 1
             db.session.add(vote)
             db.session.commit()
@@ -691,11 +712,13 @@ def vote_poll(poll_id):
     poll_public = _format_poll_dict(poll, None)
     socketio.emit('update_poll', poll_public)
 
-    poll_user = _format_poll_dict(poll, client_ip)
-    return jsonify({'success': True, 'poll': poll_user})
+    poll_user = _format_poll_dict(poll, voter_token)
+    resp = jsonify({'success': True, 'poll': poll_user, 'voter_token': voter_token})
+    resp.set_cookie('fgfess_voter_id', voter_token, max_age=31536000, samesite='Lax')
+    return resp
 
 
-def _format_poll_dict(poll, client_ip=None):
+def _format_poll_dict(poll, voter_token=None):
     if not poll:
         return None
     # Calculate vote counts dynamically from PollVote
@@ -706,8 +729,8 @@ def _format_poll_dict(poll, client_ip=None):
     total_votes = sum(vote_counts.values())
 
     user_voted_option_id = None
-    if client_ip:
-        user_vote = PollVote.query.filter_by(poll_id=poll.id, client_ip=client_ip).first()
+    if voter_token:
+        user_vote = PollVote.query.filter_by(poll_id=poll.id, voter_token=voter_token).first()
         if user_vote:
             user_voted_option_id = user_vote.option_id
 
@@ -728,7 +751,7 @@ def _format_poll_dict(poll, client_ip=None):
     }
 
 
-def _get_polls_bulk(msg_ids, client_ip=None):
+def _get_polls_bulk(msg_ids, voter_token=None):
     if not msg_ids:
         return {}
     polls = Poll.query.filter(Poll.message_id.in_(msg_ids)).all()
@@ -747,8 +770,8 @@ def _get_polls_bulk(msg_ids, client_ip=None):
         poll_vote_counts.setdefault(pid, {})[opt_id] = cnt
 
     user_votes = {}
-    if client_ip:
-        votes = PollVote.query.filter(PollVote.poll_id.in_(poll_ids), PollVote.client_ip == client_ip).all()
+    if voter_token:
+        votes = PollVote.query.filter(PollVote.poll_id.in_(poll_ids), PollVote.voter_token == voter_token).all()
         for v in votes:
             user_votes[v.poll_id] = v.option_id
 
@@ -1212,6 +1235,26 @@ with app.app_context():
                 )
             '''))
             print('[Migration] Created message_reaction table.')
+
+        if inspector.has_table('poll_vote'):
+            poll_vote_cols = [c['name'] for c in inspector.get_columns('poll_vote')]
+            if 'voter_token' not in poll_vote_cols:
+                conn.execute(text('DROP TABLE poll_vote'))
+                print('[Migration] Dropped old poll_vote table to apply voter_token.')
+
+        conn.execute(text('''
+            CREATE TABLE IF NOT EXISTS poll_vote (
+                id INTEGER PRIMARY KEY,
+                poll_id INTEGER NOT NULL,
+                option_id INTEGER NOT NULL,
+                voter_token VARCHAR(64) NOT NULL,
+                client_ip VARCHAR(45),
+                timestamp DATETIME,
+                FOREIGN KEY(poll_id) REFERENCES poll(id) ON DELETE CASCADE,
+                FOREIGN KEY(option_id) REFERENCES poll_option(id) ON DELETE CASCADE,
+                UNIQUE(poll_id, voter_token)
+            )
+        '''))
 
         conn.commit()
 
