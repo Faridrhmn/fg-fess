@@ -125,6 +125,8 @@ function applyFormat(type) {
     prefix = '__'; suffix = '__'; placeholder = 'garis bawah';
   } else if (type === 'strike') {
     prefix = '~'; suffix = '~'; placeholder = 'teks coret';
+  } else if (type === 'spoiler') {
+    prefix = '||'; suffix = '||'; placeholder = 'teks rahasia';
   }
 
   if (selected.length > 0) {
@@ -188,6 +190,8 @@ function cancelPoll() {
   }
   const addBtn = document.getElementById('btnAddPollOption');
   if (addBtn) addBtn.style.display = 'inline-block';
+  const durSelect = document.getElementById('pollDurationSelect');
+  if (durSelect) durSelect.value = '0';
 }
 
 function addPollOption() {
@@ -277,6 +281,10 @@ async function submitMessage() {
         return;
       }
       formData.append('poll_options', JSON.stringify(pollOpts));
+      const durSelect = document.getElementById('pollDurationSelect');
+      if (durSelect && durSelect.value) {
+        formData.append('poll_duration', durSelect.value);
+      }
     }
 
     const res  = await fetch('/api/submit', {
@@ -538,6 +546,16 @@ function injectMessageCard(msg, highlight) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="reply-label">${replyLabel}</span>
         </button>
+        <button class="vote-btn share-msg-btn" onclick="openShareModal(${msg.id})" title="Bagikan / Buat Gambar Story" id="share-btn-${msg.id}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span class="share-btn-label">Bagikan</span>
+        </button>
         <button class="vote-btn" onclick="reportMessage(${msg.id})" title="Laporkan Pesan" style="color: var(--danger); margin-left: auto;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
             <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line>
@@ -727,6 +745,7 @@ function renderPoll(container, msgId, pollData) {
   if (!container || !pollData || !pollData.options) return;
 
   const totalVotes = pollData.total_votes || 0;
+  const isExpired = Boolean(pollData.is_expired);
 
   // User choice resolution (preserve client's choice during broadcast events)
   let userVotedOptionId = pollData.user_voted_option_id;
@@ -736,14 +755,15 @@ function renderPoll(container, msgId, pollData) {
     const saved = localStorage.getItem(`voted_poll_${pollData.id}`);
     userVotedOptionId = saved ? parseInt(saved) : null;
   }
-  const hasVoted = Boolean(userVotedOptionId);
+  const hasVoted = Boolean(userVotedOptionId) || isExpired;
 
   const optionsHtml = pollData.options.map(opt => {
     const pct = totalVotes > 0 ? Math.round((opt.vote_count / totalVotes) * 100) : 0;
     const isChosen = userVotedOptionId === opt.id;
+    const canClick = !isExpired && !isChosen;
     return `
-      <div class="poll-option-item ${hasVoted ? 'poll-option-voted' : ''} ${isChosen ? 'poll-option-chosen' : ''}"
-           ${!isChosen ? `onclick="votePoll(${pollData.id}, ${opt.id}, ${msgId})"` : ''}
+      <div class="poll-option-item ${hasVoted ? 'poll-option-voted' : ''} ${isChosen ? 'poll-option-chosen' : ''} ${isExpired ? 'poll-option-expired' : ''}"
+           ${canClick ? `onclick="votePoll(${pollData.id}, ${opt.id}, ${msgId})"` : ''}
            role="button" tabindex="0">
         <div class="poll-option-bar" style="width: ${hasVoted ? pct : 0}%;"></div>
         <div class="poll-option-content">
@@ -762,14 +782,30 @@ function renderPoll(container, msgId, pollData) {
 
   const voteLabel = totalVotes === 1 ? '1 suara' : `${totalVotes} suara`;
 
+  let footerStatus = '';
+  if (isExpired) {
+    footerStatus = '<span class="poll-expired-badge">🔒 Polling Selesai</span>';
+  } else if (hasVoted) {
+    footerStatus = '<span class="poll-voted-badge">Sudah memilih <span style="opacity: 0.6; font-weight: normal; font-size: 0.75rem;">(klik opsi lain untuk ubah)</span></span>';
+  } else {
+    footerStatus = '<span class="poll-hint-tap">Klik pilihan untuk memilih</span>';
+  }
+
+  const durationMeta = pollData.expires_at_formatted
+    ? `<span class="poll-expiry-info" title="${isExpired ? 'Polling telah berakhir' : 'Batas waktu polling'}">${isExpired ? 'Berakhir' : 'Batas'}: ${escapeHtml(pollData.expires_at_formatted)}</span>`
+    : '';
+
   container.innerHTML = `
-    <div class="poll-box" id="poll-box-${pollData.id}">
+    <div class="poll-box ${isExpired ? 'poll-box-expired' : ''}" id="poll-box-${pollData.id}">
       <div class="poll-options-wrapper">
         ${optionsHtml}
       </div>
       <div class="poll-footer-meta">
-        <span class="poll-total-count">${voteLabel}</span>
-        ${hasVoted ? '<span class="poll-voted-badge">Sudah memilih <span style="opacity: 0.6; font-weight: normal; font-size: 0.75rem;">(klik opsi lain untuk ubah)</span></span>' : '<span class="poll-hint-tap">Klik pilihan untuk memilih</span>'}
+        <div class="poll-footer-left">
+          <span class="poll-total-count">${voteLabel}</span>
+          ${durationMeta}
+        </div>
+        ${footerStatus}
       </div>
     </div>
   `;
@@ -838,21 +874,24 @@ function renderMessageContent(rawText) {
   if (!rawText) return '';
   let str = escapeHtml(rawText);
 
-  // 1. Underline: __text__
+  // 1. Spoiler: ||teks||
+  str = str.replace(/\|\|([^\n\|]+?)\|\|/g, '<span class="spoiler-text" onclick="this.classList.toggle(\'revealed\')" title="Klik untuk membuka sensor">$1</span>');
+
+  // 2. Underline: __text__
   str = str.replace(/__([^\n_]+?)__/g, '<u>$1</u>');
 
-  // 2. Bold: **text** or *text*
+  // 3. Bold: **text** or *text*
   str = str.replace(/\*\*([^\n\*]+?)\*\*/g, '<strong>$1</strong>');
   str = str.replace(/(^|[^\*\w])\*([^\n\*\s](?:[^\n\*]*?[^\n\*\s])?)\*(?=[^\*\w]|$)/g, '$1<strong>$2</strong>');
 
-  // 3. Italic: _text_
+  // 4. Italic: _text_
   str = str.replace(/(^|[^_\w])_([^\n_\s](?:[^\n_]*?[^\n_\s])?)_(?=[^_\w]|$)/g, '$1<em>$2</em>');
 
-  // 4. Strikethrough: ~~text~~ or ~text~
+  // 5. Strikethrough: ~~text~~ or ~text~
   str = str.replace(/~~([^\n~]+?)~~/g, '<del>$1</del>');
   str = str.replace(/(^|[^~\w])~([^\n~\s](?:[^\n~]*?[^\n~\s])?)~(?=[^~\w]|$)/g, '$1<del>$2</del>');
 
-  // 5. Hashtags
+  // 6. Hashtags
   str = str.replace(/(^|[\s\n])(#(\w+))/g, (match, pre, full, tag) => {
     return `${pre}<span class="hashtag-chip" onclick="filterByHashtag('${tag.toLowerCase()}')">${full}</span>`;
   });
@@ -1697,5 +1736,232 @@ if (window.INITIAL_POLLS) {
   Object.entries(window.INITIAL_POLLS).forEach(([msgId, pollData]) => {
     const container = document.getElementById(`poll-${msgId}`);
     if (container && pollData) renderPoll(container, parseInt(msgId), pollData);
+  });
+}
+
+// ─── Share Card Generator Logic ───────────────────────────────────────────────
+let currentShareMsgId = null;
+let currentShareRatio = 'story';
+let currentShareTheme = 'emerald';
+
+function openShareModal(msgId) {
+  const msgEl = document.getElementById(`msg-${msgId}`);
+  if (!msgEl) return;
+
+  currentShareMsgId = msgId;
+
+  // Extract content
+  const textEl = msgEl.querySelector('.message-text');
+  const rawText = textEl?.dataset?.raw || textEl?.textContent || '';
+  const timeText = msgEl.querySelector('.message-time')?.textContent || '';
+  const imgEl = msgEl.querySelector('.message-image-container img');
+
+  // Fill Header ID
+  const idEl = document.getElementById('shareCardMsgId');
+  if (idEl) idEl.textContent = `#${msgId}`;
+
+  // Fill Text (render formatted text; unmask or show formatted)
+  const shareTextEl = document.getElementById('shareCardText');
+  if (shareTextEl) {
+    shareTextEl.innerHTML = renderMessageContent(rawText);
+    // In share preview, automatically reveal spoilers so image export is readable
+    shareTextEl.querySelectorAll('.spoiler-text').forEach(sp => sp.classList.add('revealed'));
+  }
+
+  // Fill Image if any
+  const shareImgEl = document.getElementById('shareCardImage');
+  if (shareImgEl) {
+    if (imgEl && imgEl.src) {
+      shareImgEl.innerHTML = `<img src="${imgEl.src}" alt="Lampiran" crossOrigin="anonymous">`;
+      shareImgEl.style.display = 'block';
+    } else {
+      shareImgEl.innerHTML = '';
+      shareImgEl.style.display = 'none';
+    }
+  }
+
+  // Fill Poll preview if any
+  const sharePollEl = document.getElementById('shareCardPoll');
+  if (sharePollEl) {
+    const pollData = (window.INITIAL_POLLS && window.INITIAL_POLLS[msgId]) || null;
+    if (pollData && pollData.options && pollData.options.length > 0) {
+      const total = pollData.total_votes || 0;
+      const optsHtml = pollData.options.map(opt => {
+        const pct = total > 0 ? Math.round((opt.vote_count / total) * 100) : 0;
+        return `
+          <div class="share-card-poll-opt">
+            <div class="share-card-poll-bar" style="width: ${pct}%;"></div>
+            <div class="share-card-poll-content">
+              <span>${escapeHtml(opt.text)}</span>
+              <strong>${pct}%</strong>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      sharePollEl.innerHTML = `
+        <div class="share-card-poll-box">
+          <div class="share-card-poll-title">📊 Polling (${total} suara)</div>
+          ${optsHtml}
+        </div>
+      `;
+      sharePollEl.style.display = 'block';
+    } else {
+      sharePollEl.innerHTML = '';
+      sharePollEl.style.display = 'none';
+    }
+  }
+
+  // Fill Meta
+  const timeEl = document.getElementById('shareCardTime');
+  if (timeEl) timeEl.textContent = `${timeText} WIB`;
+
+  // Default theme & ratio
+  setShareTheme(currentShareTheme);
+  setShareRatio(currentShareRatio);
+
+  // Show modal
+  const modal = document.getElementById('shareModal');
+  if (modal) {
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeShareModal() {
+  const modal = document.getElementById('shareModal');
+  if (modal) {
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+}
+
+function handleShareBackdropClick(event) {
+  if (event.target && event.target.id === 'shareModal') {
+    closeShareModal();
+  }
+}
+
+function setShareRatio(ratio) {
+  currentShareRatio = ratio;
+  const target = document.getElementById('shareCardTarget');
+  if (!target) return;
+
+  target.classList.remove('ratio-story', 'ratio-square');
+  target.classList.add(`ratio-${ratio}`);
+
+  const btnStory = document.getElementById('btnRatioStory');
+  const btnSquare = document.getElementById('btnRatioSquare');
+  if (btnStory) btnStory.classList.toggle('active', ratio === 'story');
+  if (btnSquare) btnSquare.classList.toggle('active', ratio === 'square');
+}
+
+function setShareTheme(theme) {
+  currentShareTheme = theme;
+  const target = document.getElementById('shareCardTarget');
+  if (!target) return;
+
+  target.classList.remove('theme-emerald', 'theme-midnight', 'theme-sunset', 'theme-clean');
+  target.classList.add(`theme-${theme}`);
+
+  document.querySelectorAll('.theme-dot').forEach(dot => {
+    dot.classList.toggle('active', dot.dataset.theme === theme || dot.id === `dot-${theme}`);
+  });
+}
+
+async function renderCardToCanvas() {
+  const target = document.getElementById('shareCardTarget');
+  if (!target) throw new Error('Preview element not found');
+
+  if (typeof html2canvas === 'undefined') {
+    throw new Error('html2canvas belum termuat.');
+  }
+
+  // Render using html2canvas with 2x retina scale
+  return await html2canvas(target, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: null,
+    logging: false
+  });
+}
+
+async function downloadShareCard() {
+  const btn = document.getElementById('btnDownloadCard');
+  const btnText = document.getElementById('btnDownloadText');
+  const origText = btnText ? btnText.textContent : 'Unduh PNG';
+
+  try {
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Memproses…';
+
+    const canvas = await renderCardToCanvas();
+    const link = document.createElement('a');
+    link.download = `fgfess-pesan-${currentShareMsgId || 'card'}-${currentShareRatio}.png`;
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    showToast('✓ Gambar berhasil diunduh!', 'success');
+  } catch (err) {
+    console.error('Download card error:', err);
+    showToast('Gagal membuat gambar kartu.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (btnText) btnText.textContent = origText;
+  }
+}
+
+async function shareToMedsos() {
+  const btn = document.getElementById('btnNativeShare');
+  try {
+    if (btn) btn.disabled = true;
+
+    const canvas = await renderCardToCanvas();
+
+    if (navigator.canShare) {
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          downloadShareCard();
+          return;
+        }
+        const file = new File([blob], `fgfess-pesan-${currentShareMsgId}.png`, { type: 'image/png' });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'fg/fess — Pesan Anonim',
+              text: `Pesan anonim #${currentShareMsgId} di fg/fess`
+            });
+            showToast('✓ Berhasil dibagikan!', 'success');
+          } catch (shareErr) {
+            if (shareErr.name !== 'AbortError') {
+              downloadShareCard();
+            }
+          }
+        } else {
+          // File share not supported, download instead
+          downloadShareCard();
+        }
+      }, 'image/png');
+    } else {
+      // Fallback
+      downloadShareCard();
+    }
+  } catch (err) {
+    downloadShareCard();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function copyMessageLink() {
+  const link = `${window.location.origin}${window.location.pathname}#msg-${currentShareMsgId}`;
+  navigator.clipboard.writeText(link).then(() => {
+    showToast('✓ Link pesan berhasil disalin!', 'success');
+  }).catch(() => {
+    showToast('Gagal menyalin link.', 'error');
   });
 }

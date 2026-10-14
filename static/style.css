@@ -1843,9 +1843,6 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--primary);
   box-shadow: 0 0 0 1px var(--primary);
 }
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
-}
 
 .poll-option-bar {
   position: absolute;
@@ -1964,5 +1961,589 @@ a { color: inherit; text-decoration: none; }
 .poll-hint-tap {
   font-style: italic;
   font-size: 0.75rem;
+}
+
+/* ─── Spoiler / Text Blur Sensor ─────────────────────────────────────────────── */
+.spoiler-text {
+  display: inline-block;
+  background: var(--text-3);
+  color: transparent !important;
+  user-select: none;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0 5px;
+  margin: 0 2px;
+  filter: blur(4px);
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  vertical-align: baseline;
+}
+
+.spoiler-text.revealed {
+  background: rgba(120, 120, 120, 0.15);
+  color: inherit !important;
+  filter: none;
+  user-select: auto;
+  cursor: text;
+}
+
+[data-theme="dark"] .spoiler-text:not(.revealed) {
+  background: #2a333d;
+  filter: blur(5px);
+}
+
+.format-btn-spoiler {
+  font-size: 0.95rem;
+}
+
+/* ─── Poll Duration & Expiry Status ─────────────────────────────────────────── */
+.poll-duration-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.poll-duration-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.poll-duration-select:focus {
+  border-color: var(--primary);
+}
+
+.poll-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.poll-expiry-info {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.73rem;
+  color: var(--text-3);
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.poll-expired-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 0.78rem;
+  background: rgba(220, 74, 61, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.poll-option-item.poll-option-expired {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.poll-option-item.poll-option-expired:hover {
+  border-color: var(--border);
+  box-shadow: none;
+  transform: none;
+}
+
+/* ─── Share Button & Modal ───────────────────────────────────────────────────── */
+.share-msg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  transition: all 0.15s ease;
+}
+
+.share-msg-btn:hover {
+  color: var(--primary);
+  background: rgba(19, 141, 130, 0.08);
+}
+
+.share-btn-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* Modal Backdrop */
+.share-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease;
+}
+
+.share-modal-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.share-modal-header {
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.share-modal-title svg {
+  color: var(--primary);
+}
+
+.share-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.share-modal-close:hover {
+  color: var(--danger);
+  background: var(--bg);
+}
+
+.share-modal-body {
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+
+.share-controls {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.share-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-control-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.share-btn-group {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.share-option-btn {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.share-option-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.share-theme-selector {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.theme-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.theme-dot:hover {
+  transform: scale(1.15);
+}
+
+.theme-dot.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--primary);
+  transform: scale(1.15);
+}
+
+.theme-dot-emerald {
+  background: linear-gradient(135deg, #0f766e, #14b8a6);
+}
+
+.theme-dot-midnight {
+  background: linear-gradient(135deg, #090d16, #1e293b);
+}
+
+.theme-dot-sunset {
+  background: linear-gradient(135deg, #ea580c, #ec4899);
+}
+
+.theme-dot-clean {
+  background: linear-gradient(135deg, #f8fafc, #cbd5e1);
+  border: 1px solid #94a3b8;
+}
+
+/* ─── Share Preview Target (Card to capture) ────────────────────────────────── */
+.share-preview-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.share-card-canvas {
+  width: 310px;
+  border-radius: 18px;
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.25);
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.share-card-canvas.ratio-story {
+  min-height: 460px;
+  aspect-ratio: 9 / 14;
+}
+
+.share-card-canvas.ratio-square {
+  min-height: 310px;
+  aspect-ratio: 1 / 1;
+}
+
+/* Themes */
+.share-card-canvas.theme-emerald {
+  background: linear-gradient(155deg, #042f2e 0%, #064e3b 50%, #0f172a 100%);
+  color: #f0fdf4;
+}
+
+.share-card-canvas.theme-midnight {
+  background: linear-gradient(160deg, #020617 0%, #0f172a 60%, #1e1b4b 100%);
+  color: #f8fafc;
+}
+
+.share-card-canvas.theme-sunset {
+  background: linear-gradient(155deg, #7c2d12 0%, #831843 55%, #18181b 100%);
+  color: #fff1f2;
+}
+
+.share-card-canvas.theme-clean {
+  background: linear-gradient(145deg, #ffffff 0%, #f1f5f9 100%);
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+}
+
+.share-card-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.share-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.share-brand-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.share-brand-logo {
+  font-family: inherit;
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.5px;
+  color: #2dd4bf;
+}
+
+.theme-sunset .share-brand-logo {
+  color: #fb923c;
+}
+
+.theme-clean .share-brand-logo {
+  color: #0f766e;
+}
+
+.share-brand-sub {
+  font-size: 0.65rem;
+  opacity: 0.75;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+
+.share-card-badge-id {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(4px);
+}
+
+.theme-clean .share-card-badge-id {
+  background: rgba(0, 0, 0, 0.08);
+  color: #334155;
+}
+
+.share-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.share-card-text {
+  font-size: 1rem;
+  line-height: 1.55;
+  font-weight: 500;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.share-card-image {
+  margin-top: 4px;
+  border-radius: 10px;
+  overflow: hidden;
+  max-height: 160px;
+}
+
+.share-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.share-card-poll-box {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.theme-clean .share-card-poll-box {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+}
+
+.share-card-poll-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.share-card-poll-opt {
+  position: relative;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+}
+
+.theme-clean .share-card-poll-opt {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.share-card-poll-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: rgba(45, 212, 191, 0.35);
+  border-radius: 6px;
+}
+
+.theme-sunset .share-card-poll-bar {
+  background: rgba(251, 146, 60, 0.4);
+}
+
+.theme-clean .share-card-poll-bar {
+  background: rgba(15, 118, 110, 0.2);
+}
+
+.share-card-poll-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.share-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  padding-top: 10px;
+}
+
+.theme-clean .share-card-footer {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.share-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.share-card-watermark {
+  font-size: 0.65rem;
+  font-weight: 500;
+  opacity: 0.6;
+}
+
+/* Modal Footer Buttons */
+.share-modal-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  background: var(--bg);
+}
+
+.btn-share-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.btn-share-download {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.btn-share-download:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-share-native {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-share-native:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn-share-copy {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-2);
+}
+
+.btn-share-copy:hover {
+  background: var(--bg);
+  color: var(--text);
 }
 

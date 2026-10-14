@@ -170,6 +170,7 @@ class Poll(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     message_id = db.Column(db.Integer, db.ForeignKey('message.id', ondelete='CASCADE'), nullable=False, unique=True)
     created_at = db.Column(db.DateTime, default=get_wib_time)
+    expires_at = db.Column(db.DateTime, nullable=True)
 
     message = db.relationship('Message', backref=db.backref('poll', uselist=False, cascade='all, delete'))
     options = db.relationship('PollOption', backref='poll', lazy=True, cascade='all, delete-orphan', order_by='PollOption.id')
@@ -311,6 +312,14 @@ def submit_message():
 
     # Poll validation
     poll_options_raw = data.get('poll_options')
+    poll_duration_days = 0
+    poll_duration_raw = data.get('poll_duration')
+    if poll_duration_raw:
+        try:
+            poll_duration_days = int(poll_duration_raw)
+        except (ValueError, TypeError):
+            poll_duration_days = 0
+
     poll_options = []
     if poll_options_raw and not parent_id:
         if isinstance(poll_options_raw, str):
@@ -367,7 +376,10 @@ def submit_message():
 
     poll_obj = None
     if not parent_id and len(poll_options) >= 2:
-        poll_obj = Poll(message=new_msg)
+        expires_at = None
+        if poll_duration_days > 0:
+            expires_at = get_wib_time() + datetime.timedelta(days=poll_duration_days)
+        poll_obj = Poll(message=new_msg, expires_at=expires_at)
         db.session.add(poll_obj)
         for opt_text in poll_options:
             opt = PollOption(poll=poll_obj, text=opt_text, vote_count=0)
@@ -665,6 +677,10 @@ def vote_poll(poll_id):
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
     poll = Poll.query.get_or_404(poll_id)
 
+    # Check poll expiry
+    if poll.expires_at and get_wib_time() > poll.expires_at:
+        return jsonify({'error': 'Polling sudah berakhir dan tidak menerima suara lagi.'}), 400
+
     data = request.get_json() or {}
     option_id = data.get('option_id')
     if not option_id:
@@ -734,11 +750,19 @@ def _format_poll_dict(poll, voter_token=None):
         if user_vote:
             user_voted_option_id = user_vote.option_id
 
+    now = get_wib_time()
+    is_expired = bool(poll.expires_at and now > poll.expires_at)
+    expires_at_iso = poll.expires_at.isoformat() if poll.expires_at else None
+    expires_at_formatted = poll.expires_at.strftime('%d %b %Y, %H:%M WIB') if poll.expires_at else None
+
     return {
         'id': poll.id,
         'message_id': poll.message_id,
         'total_votes': total_votes,
         'user_voted_option_id': user_voted_option_id,
+        'is_expired': is_expired,
+        'expires_at': expires_at_iso,
+        'expires_at_formatted': expires_at_formatted,
         'options': [
             {
                 'id': opt.id,
@@ -775,15 +799,20 @@ def _get_polls_bulk(msg_ids, voter_token=None):
         for v in votes:
             user_votes[v.poll_id] = v.option_id
 
+    now = get_wib_time()
     result = {}
     for poll in polls:
         counts = poll_vote_counts.get(poll.id, {})
         total_votes = sum(counts.values())
+        is_expired = bool(poll.expires_at and now > poll.expires_at)
         result[poll.message_id] = {
             'id': poll.id,
             'message_id': poll.message_id,
             'total_votes': total_votes,
             'user_voted_option_id': user_votes.get(poll.id),
+            'is_expired': is_expired,
+            'expires_at': poll.expires_at.isoformat() if poll.expires_at else None,
+            'expires_at_formatted': poll.expires_at.strftime('%d %b %Y, %H:%M WIB') if poll.expires_at else None,
             'options': [
                 {
                     'id': opt.id,
@@ -1255,6 +1284,12 @@ with app.app_context():
                 UNIQUE(poll_id, voter_token)
             )
         '''))
+
+        if inspector.has_table('poll'):
+            poll_cols = [c['name'] for c in inspector.get_columns('poll')]
+            if 'expires_at' not in poll_cols:
+                conn.execute(text('ALTER TABLE poll ADD COLUMN expires_at DATETIME'))
+                print('[Migration] Added expires_at column to poll table.')
 
         conn.commit()
 
