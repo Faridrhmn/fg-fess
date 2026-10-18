@@ -1,4 +1,4 @@
-# fg/fess — Anonymous Message Board
+# con/fess — Anonymous Message Board
 
 Papan pesan anonim sederhana berbasis web. Siapapun bisa mengirim pesan tanpa nama, dan semua pesan tampil secara publik untuk dibaca bersama.
 
@@ -170,7 +170,7 @@ Isi dengan (sesuaikan path):
 
 ```ini
 [Unit]
-Description=fg/fess Menfess App
+Description=con/fess Menfess App
 After=network.target
 
 [Service]

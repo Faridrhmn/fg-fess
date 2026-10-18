@@ -1,21 +1,23 @@
 <!DOCTYPE html>
 <html lang="id" data-theme="light">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login Admin — fg/fess</title>
+  <title>Login Admin — con/fess</title>
   <link rel="icon" href="/static/favicon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
   <script>
     /* Apply saved theme immediately to prevent flash */
-    (function() {
+    (function () {
       const saved = localStorage.getItem('fgfess_theme') || 'light';
       document.documentElement.setAttribute('data-theme', saved);
     })();
   </script>
 </head>
+
 <body class="login-body">
   <div class="login-container">
     <div class="login-card">
@@ -25,11 +27,11 @@
       <p class="login-sub">Admin Access</p>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
-          {% endfor %}
-        {% endif %}
+      {% if messages %}
+      {% for category, message in messages %}
+      <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+      {% endif %}
       {% endwith %}
 
       <form method="POST" action="/login" class="login-form">
@@ -46,4 +48,5 @@
     </div>
   </div>
 </body>
+
 </html>

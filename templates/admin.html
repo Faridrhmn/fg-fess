@@ -1,21 +1,23 @@
 <!DOCTYPE html>
 <html lang="id" data-theme="light">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin — fg/fess</title>
+  <title>Admin — con/fess</title>
   <link rel="icon" href="/static/favicon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
   <script>
     /* Apply saved theme immediately to prevent flash */
-    (function() {
+    (function () {
       const saved = localStorage.getItem('fgfess_theme') || 'light';
       document.documentElement.setAttribute('data-theme', saved);
     })();
   </script>
 </head>
+
 <body class="admin-body">
   {% include "components/header/site_header.html" %}
 
@@ -42,34 +44,46 @@
       <div class="compose-header">
         <span class="compose-label" style="color: var(--warn); display: flex; align-items: center; gap: 6px;">
           <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16">
-            <path d="M12 2C10.3431 2 9 3.34315 9 5V5.5H8C6.34315 5.5 5 6.84315 5 8.5V13L3 17H21L19 13V8.5C19 6.84315 17.6569 5.5 16 5.5H15V5C15 3.34315 13.6569 2 12 2ZM12 4C12.5523 4 13 4.44772 13 5V5.5H11V5C11 4.44772 11.4477 4 12 4ZM7 8.5C7 7.94772 7.44772 7.5 8 7.5H16C16.5523 7.5 17 7.94772 17 8.5V13.5279L18.064 15.6557H5.93603L7 13.5279V8.5ZM10 18C10 19.1046 10.8954 20 12 20C13.1046 20 14 19.1046 14 18H10Z"/>
+            <path
+              d="M12 2C10.3431 2 9 3.34315 9 5V5.5H8C6.34315 5.5 5 6.84315 5 8.5V13L3 17H21L19 13V8.5C19 6.84315 17.6569 5.5 16 5.5H15V5C15 3.34315 13.6569 2 12 2ZM12 4C12.5523 4 13 4.44772 13 5V5.5H11V5C11 4.44772 11.4477 4 12 4ZM7 8.5C7 7.94772 7.44772 7.5 8 7.5H16C16.5523 7.5 17 7.94772 17 8.5V13.5279L18.064 15.6557H5.93603L7 13.5279V8.5ZM10 18C10 19.1046 10.8954 20 12 20C13.1046 20 14 19.1046 14 18H10Z" />
           </svg>
           Notifikasi Pembaruan (Aktif 24 Jam)
         </span>
       </div>
-      <div id="activeAnnouncementContainer" class="hidden" style="margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);">
+      <div id="activeAnnouncementContainer" class="hidden"
+        style="margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-          <p id="activeAnnouncementText" style="font-size: 0.85rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; margin: 0;"></p>
-          <button onclick="deleteAnnouncement()" style="background: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">Hapus</button>
+          <p id="activeAnnouncementText"
+            style="font-size: 0.85rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; margin: 0;"></p>
+          <button onclick="deleteAnnouncement()"
+            style="background: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">Hapus</button>
         </div>
       </div>
-      <textarea id="announcementInput" class="compose-textarea" placeholder="Tulis pengumuman fitur baru di sini..." rows="2" style="margin-bottom: 10px;"></textarea>
-      <button class="btn-send" onclick="submitAnnouncement()" id="btnAnnouncement" style="width: 100%; justify-content: center;">Kirim Notifikasi</button>
+      <textarea id="announcementInput" class="compose-textarea" placeholder="Tulis pengumuman fitur baru di sini..."
+        rows="2" style="margin-bottom: 10px;"></textarea>
+      <button class="btn-send" onclick="submitAnnouncement()" id="btnAnnouncement"
+        style="width: 100%; justify-content: center;">Kirim Notifikasi</button>
     </div>
 
     <!-- Filter Tabs -->
-    <div class="filter-tabs" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+    <div class="filter-tabs"
+      style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
       <div style="display: flex; gap: 4px;">
-        <a href="/admin?filter=all&room={{ room_filter }}" class="tab-btn {% if filter_mode == 'all' %}active{% endif %}">Semua</a>
-        <a href="/admin?filter=visible&room={{ room_filter }}" class="tab-btn {% if filter_mode == 'visible' %}active{% endif %}">Publik</a>
-        <a href="/admin?filter=hidden&room={{ room_filter }}" class="tab-btn {% if filter_mode == 'hidden' %}active{% endif %}">Tersembunyi</a>
+        <a href="/admin?filter=all&room={{ room_filter }}"
+          class="tab-btn {% if filter_mode == 'all' %}active{% endif %}">Semua</a>
+        <a href="/admin?filter=visible&room={{ room_filter }}"
+          class="tab-btn {% if filter_mode == 'visible' %}active{% endif %}">Publik</a>
+        <a href="/admin?filter=hidden&room={{ room_filter }}"
+          class="tab-btn {% if filter_mode == 'hidden' %}active{% endif %}">Tersembunyi</a>
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Filter Room:</label>
-        <select onchange="location.href='/admin?filter={{ filter_mode }}&room=' + this.value" style="padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.8rem;">
-          <option value="all" {% if room_filter == 'all' %}selected{% endif %}>Semua Room</option>
+        <select onchange="location.href='/admin?filter={{ filter_mode }}&room=' + this.value"
+          style="padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.8rem;">
+          <option value="all" {% if room_filter=='all' %}selected{% endif %}>Semua Room</option>
           {% for r in all_rooms %}
-            <option value="{{ r.slug }}" {% if room_filter == r.slug %}selected{% endif %}>{{ r.name }} (/r/{{ r.slug }})</option>
+          <option value="{{ r.slug }}" {% if room_filter==r.slug %}selected{% endif %}>{{ r.name }} (/r/{{ r.slug }})
+          </option>
           {% endfor %}
         </select>
       </div>
@@ -78,59 +92,70 @@
     <!-- Messages Table -->
     <div class="admin-feed">
       {% if messages.items %}
-        {% for msg in messages.items %}
-        <div class="admin-card {% if msg.is_hidden %}is-hidden{% endif %}" id="admin-msg-{{ msg.id }}">
-          <div class="admin-card-body">
-            {% if msg.reports and msg.reports > 0 %}
-            <div id="report-info-{{ msg.id }}" style="background: rgba(220, 74, 61, 0.1); border: 1px solid var(--danger); padding: 8px; border-radius: var(--radius); margin-bottom: 8px;">
-              <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
-                <span>⚠️ Dilaporkan ({{ msg.reports }} kali)</span>
-                <button onclick="clearReports({{ msg.id }})" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; cursor: pointer;">Abaikan</button>
-              </div>
-              <ul style="margin: 4px 0 0 20px; font-size: 0.75rem; color: var(--danger);">
-                {% for r in msg.reports_list %}
-                  <li>{{ r.reason }}</li>
-                {% endfor %}
-              </ul>
+      {% for msg in messages.items %}
+      <div class="admin-card {% if msg.is_hidden %}is-hidden{% endif %}" id="admin-msg-{{ msg.id }}">
+        <div class="admin-card-body">
+          {% if msg.reports and msg.reports > 0 %}
+          <div id="report-info-{{ msg.id }}"
+            style="background: rgba(220, 74, 61, 0.1); border: 1px solid var(--danger); padding: 8px; border-radius: var(--radius); margin-bottom: 8px;">
+            <div
+              style="font-size: 0.75rem; color: var(--danger); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+              <span>⚠️ Dilaporkan ({{ msg.reports }} kali)</span>
+              <button onclick="clearReports({{ msg.id }})"
+                style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; cursor: pointer;">Abaikan</button>
             </div>
-            {% endif %}
-            <p class="admin-msg-text">{{ msg.content }}</p>
-            {% if msg.image_filename %}
-            <div style="margin-top: 8px; overflow: hidden;">
-              <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image" style="max-width: 100%; max-height: 200px; height: auto; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); display: block;">
-            </div>
-            {% endif %}
-            <time class="admin-msg-time">{{ msg.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ msg.id }} {% if msg.location and msg.location != 'Tidak diketahui' %}· 📍 {{ msg.location }}{% endif %}</time>
+            <ul style="margin: 4px 0 0 20px; font-size: 0.75rem; color: var(--danger);">
+              {% for r in msg.reports_list %}
+              <li>{{ r.reason }}</li>
+              {% endfor %}
+            </ul>
           </div>
-          <div class="admin-card-actions">
-            <button
-              class="action-btn btn-toggle"
-              onclick="toggleMessage({{ msg.id }}, this)"
-              title="{% if msg.is_hidden %}Tampilkan{% else %}Sembunyikan{% endif %}"
-            >
-              {% if msg.is_hidden %}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                <span>Tampilkan</span>
-              {% else %}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                <span>Sembunyikan</span>
-              {% endif %}
-            </button>
-            <button
-              class="action-btn btn-delete"
-              onclick="deleteMessage({{ msg.id }})"
-              title="Hapus Permanen"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-              <span>Hapus</span>
-            </button>
+          {% endif %}
+          <p class="admin-msg-text">{{ msg.content }}</p>
+          {% if msg.image_filename %}
+          <div style="margin-top: 8px; overflow: hidden;">
+            <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image"
+              style="max-width: 100%; max-height: 200px; height: auto; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); display: block;">
           </div>
+          {% endif %}
+          <time class="admin-msg-time">{{ msg.timestamp.strftime('%d %b %Y, %H:%M') }} · ID #{{ msg.id }} {% if
+            msg.location and msg.location != 'Tidak diketahui' %}· 📍 {{ msg.location }}{% endif %}</time>
         </div>
-        {% endfor %}
+        <div class="admin-card-actions">
+          <button class="action-btn btn-toggle" onclick="toggleMessage({{ msg.id }}, this)"
+            title="{% if msg.is_hidden %}Tampilkan{% else %}Sembunyikan{% endif %}">
+            {% if msg.is_hidden %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span>Tampilkan</span>
+            {% else %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+            <span>Sembunyikan</span>
+            {% endif %}
+          </button>
+          <button class="action-btn btn-delete" onclick="deleteMessage({{ msg.id }})" title="Hapus Permanen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>
+            <span>Hapus</span>
+          </button>
+        </div>
+      </div>
+      {% endfor %}
       {% else %}
-        <div class="empty-state">
-          <p>Tidak ada pesan di filter ini.</p>
-        </div>
+      <div class="empty-state">
+        <p>Tidak ada pesan di filter ini.</p>
+      </div>
       {% endif %}
     </div>
 
@@ -138,18 +163,19 @@
     {% if messages.pages > 1 %}
     <div class="pagination">
       {% if messages.has_prev %}
-        <a href="/admin?filter={{ filter_mode }}&page={{ messages.prev_num }}" class="page-btn">← Sebelumnya</a>
+      <a href="/admin?filter={{ filter_mode }}&page={{ messages.prev_num }}" class="page-btn">← Sebelumnya</a>
       {% endif %}
       <span class="page-info">{{ messages.page }} / {{ messages.pages }}</span>
       {% if messages.has_next %}
-        <a href="/admin?filter={{ filter_mode }}&page={{ messages.next_num }}" class="page-btn">Berikutnya →</a>
+      <a href="/admin?filter={{ filter_mode }}&page={{ messages.next_num }}" class="page-btn">Berikutnya →</a>
       {% endif %}
     </div>
     {% endif %}
     <!-- Master Room Management Section (Super Admin) -->
     <div class="compose-card" style="margin-top: 24px; padding: 18px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <span style="font-weight: 700; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
+        <span
+          style="font-weight: 700; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
           <span>🪐</span> Kelola Semua Room Platform
         </span>
         <span style="font-size: 0.78rem; color: var(--text-muted);">Super Admin Control</span>
@@ -171,11 +197,13 @@
             {% for r in all_rooms %}
             <tr style="border-bottom: 1px solid var(--border);">
               <td style="padding: 8px; font-weight: 600; color: var(--text);">
-                <a href="/r/{{ r.slug }}" target="_blank" style="color: inherit; text-decoration: none;">{{ r.name }}</a>
+                <a href="/r/{{ r.slug }}" target="_blank" style="color: inherit; text-decoration: none;">{{ r.name
+                  }}</a>
               </td>
               <td style="padding: 8px; color: var(--text-muted);">/r/{{ r.slug }}</td>
               <td style="padding: 8px;">
-                {% if r.is_private %}<span style="color: #f59e0b; font-weight: 600;">🔒 Privat</span>{% else %}<span style="color: #10b981; font-weight: 600;">🌐 Publik</span>{% endif %}
+                {% if r.is_private %}<span style="color: #f59e0b; font-weight: 600;">🔒 Privat</span>{% else %}<span
+                  style="color: #10b981; font-weight: 600;">🌐 Publik</span>{% endif %}
               </td>
               <td style="padding: 8px; color: var(--text-muted);">
                 {% if r.owner %}@{{ r.owner.username }}{% else %}<em>Sistem (Umum)</em>{% endif %}
@@ -183,21 +211,24 @@
               <td style="padding: 8px;">{{ r.messages.count() }}</td>
               <td style="padding: 8px;">
                 {% if r.is_suspended %}
-                  <span style="color: #ef4444; font-weight: 600;">🚫 Dibekukan</span>
+                <span style="color: #ef4444; font-weight: 600;">🚫 Dibekukan</span>
                 {% else %}
-                  <span style="color: #10b981; font-weight: 600;">✓ Aktif</span>
+                <span style="color: #10b981; font-weight: 600;">✓ Aktif</span>
                 {% endif %}
               </td>
               <td style="padding: 8px; text-align: right;">
                 {% if r.slug != 'general' %}
-                  <button type="button" onclick="adminSuspendRoom('{{ r.slug }}', {{ 'true' if r.is_suspended else 'false' }})" style="padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.72rem; cursor: pointer;">
-                    {% if r.is_suspended %}Aktifkan{% else %}Bekukan{% endif %}
-                  </button>
-                  <button type="button" onclick="adminDeleteRoom('{{ r.slug }}')" style="padding: 3px 8px; border-radius: 4px; border: 1px solid #ef4444; background: var(--surface); color: #ef4444; font-size: 0.72rem; cursor: pointer; margin-left: 4px;">
-                    Hapus
-                  </button>
+                <button type="button"
+                  onclick="adminSuspendRoom('{{ r.slug }}', {{ 'true' if r.is_suspended else 'false' }})"
+                  style="padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.72rem; cursor: pointer;">
+                  {% if r.is_suspended %}Aktifkan{% else %}Bekukan{% endif %}
+                </button>
+                <button type="button" onclick="adminDeleteRoom('{{ r.slug }}')"
+                  style="padding: 3px 8px; border-radius: 4px; border: 1px solid #ef4444; background: var(--surface); color: #ef4444; font-size: 0.72rem; cursor: pointer; margin-left: 4px;">
+                  Hapus
+                </button>
                 {% else %}
-                  <em style="color: var(--text-muted); font-size: 0.75rem;">Default</em>
+                <em style="color: var(--text-muted); font-size: 0.75rem;">Default</em>
                 {% endif %}
               </td>
             </tr>
@@ -212,9 +243,9 @@
     // Update the three stats numbers at the top
     function updateStats(stats) {
       if (!stats) return;
-      document.getElementById('statTotal').textContent   = stats.total;
+      document.getElementById('statTotal').textContent = stats.total;
       document.getElementById('statVisible').textContent = stats.visible;
-      document.getElementById('statHidden').textContent  = stats.hidden;
+      document.getElementById('statHidden').textContent = stats.hidden;
     }
 
     function showToast(msg, type = 'success') {
@@ -251,7 +282,7 @@
 
     async function toggleMessage(id, btn) {
       const card = document.getElementById('admin-msg-' + id);
-      const res  = await fetch('/admin/toggle/' + id, { method: 'POST' });
+      const res = await fetch('/admin/toggle/' + id, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         const isHidden = data.is_hidden;
@@ -267,11 +298,11 @@
     async function deleteMessage(id) {
       const confirmed = await showConfirm('Hapus pesan ini secara permanen? Tindakan ini tidak bisa dibatalkan.');
       if (!confirmed) return;
-      const res  = await fetch('/admin/delete/' + id, { method: 'POST' });
+      const res = await fetch('/admin/delete/' + id, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         const card = document.getElementById('admin-msg-' + id);
-        card.style.opacity   = '0';
+        card.style.opacity = '0';
         card.style.transform = 'translateX(20px)';
         card.style.transition = 'opacity .3s, transform .3s';
         setTimeout(() => card.remove(), 300);
@@ -284,12 +315,12 @@
       const input = document.getElementById('announcementInput');
       const btn = document.getElementById('btnAnnouncement');
       const content = input.value.trim();
-      
+
       if (!content) return;
-      
+
       btn.disabled = true;
       btn.textContent = 'Mengirim...';
-      
+
       try {
         const res = await fetch('/admin/announcement', {
           method: 'POST',
@@ -297,7 +328,7 @@
           body: JSON.stringify({ content })
         });
         const data = await res.json();
-        
+
         if (data.success) {
           input.value = '';
           fetchAdminAnnouncement();
@@ -325,7 +356,7 @@
         } else {
           container.classList.add('hidden');
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     fetchAdminAnnouncement();
 
@@ -338,7 +369,7 @@
           fetchAdminAnnouncement();
           showToast('Notifikasi dihapus.', 'success');
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     async function clearReports(msgId) {
@@ -351,7 +382,7 @@
           if (info) info.remove();
           showToast('Laporan diabaikan.', 'success');
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // ─── Real-time Polling for Admin ──────────────────────────────────────────
@@ -364,13 +395,13 @@
       const loc = msg.location && msg.location !== 'Tidak diketahui' ? `· 📍 ${msg.location}` : '';
       const hiddenClass = msg.is_hidden ? 'is-hidden' : '';
       const btnTitle = msg.is_hidden ? 'Tampilkan' : 'Sembunyikan';
-      const btnIcon = msg.is_hidden 
+      const btnIcon = msg.is_hidden
         ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Tampilkan</span>`
         : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><span>Sembunyikan</span>`;
-      
+
       const safeContent = msg.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const imageHtml = msg.image_filename ? `<div style="margin-top: 8px; overflow: hidden;"><img src="/static/uploads/${msg.image_filename}" alt="Uploaded Image" style="max-width: 100%; max-height: 200px; height: auto; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--border); display: block;"></div>` : '';
-      
+
       let reportsHtml = '';
       if (msg.reports > 0) {
         let reasons = '';
@@ -414,7 +445,7 @@
         try {
           const res = await fetch(`/api/admin/messages?since=${latestId}&filter=${filterMode}`);
           const data = await res.json();
-          
+
           if (data.messages && data.messages.length > 0) {
             const feed = document.querySelector('.admin-feed');
             const empty = feed.querySelector('.empty-state');
@@ -425,7 +456,7 @@
               if (msg.id > latestId) latestId = msg.id;
               feed.insertAdjacentHTML('afterbegin', buildAdminCard(msg));
             });
-            
+
             if (data.stats) updateStats(data.stats);
           }
 
@@ -434,13 +465,13 @@
               const cardBody = document.querySelector(`#admin-msg-${id} .admin-card-body`);
               if (cardBody) {
                 let info = document.getElementById(`report-info-${id}`);
-                
+
                 if (update.reports > 0) {
                   let reasons = '';
                   if (update.report_reasons && update.report_reasons.length > 0) {
                     reasons = '<ul style="margin: 4px 0 0 20px; font-size: 0.75rem; color: var(--danger);">' + update.report_reasons.map(r => `<li>${r}</li>`).join('') + '</ul>';
                   }
-                  
+
                   const reportsHtml = `
                     <div id="report-info-${id}" style="background: rgba(220, 74, 61, 0.1); border: 1px solid var(--danger); padding: 8px; border-radius: var(--radius); margin-bottom: 8px;">
                       <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
@@ -450,7 +481,7 @@
                       ${reasons}
                     </div>
                   `;
-                  
+
                   if (info) {
                     info.outerHTML = reportsHtml;
                   } else {
@@ -462,7 +493,7 @@
               }
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }, 5000);
     }
 
@@ -504,9 +535,17 @@
   <script src="/static/theme.js"></script>
   <style>
     @keyframes fade-in {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
   </style>
 </body>
+
 </html>

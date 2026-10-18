@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}{{ current_room.name }} — fg/fess{% endblock %}
+{% block title %}{{ current_room.name }} — con/fess{% endblock %}
 
 {% block content %}
 <main class="container-wide main-layout">
   {# 1. Subtle Breadcrumb Bar untuk room spesifik #}
   {% if current_room.slug != 'general' %}
-    {% include "components/feed/room_subtle_bar.html" %}
+  {% include "components/feed/room_subtle_bar.html" %}
   {% endif %}
 
   {# 2. Banner Pengumuman Realtime #}
@@ -32,19 +32,19 @@
 {% include "components/modals/modal_share.html" %}
 
 {% if is_moderator and current_room.slug != 'general' %}
-  {% include "components/modals/modal_room_settings.html" %}
+{% include "components/modals/modal_room_settings.html" %}
 {% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
-  <script>
-    window.CURRENT_ROOM_SLUG = {{ current_room.slug | tojson | safe }};
-    window.CURRENT_ROOM_NAME = {{ current_room.name | tojson | safe }};
-    window.IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
-    window.INITIAL_REACTIONS = {{ reaction_counts | tojson | safe }};
-    window.INITIAL_POLLS = {{ polls | tojson | safe }};
-  </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="/static/script.js"></script>
+<script>
+  window.CURRENT_ROOM_SLUG = {{ current_room.slug | tojson | safe }};
+  window.CURRENT_ROOM_NAME = {{ current_room.name | tojson | safe }};
+  window.IS_MODERATOR = {{ 'true' if is_moderator else 'false' }};
+  window.INITIAL_REACTIONS = {{ reaction_counts | tojson | safe }};
+  window.INITIAL_POLLS = {{ polls | tojson | safe }};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="/static/script.js"></script>
 {% endblock %}
