@@ -1,0 +1,94 @@
+<!-- Single Message Card Component -->
+<article class="message-card {% if msg.is_pinned %}pinned-message{% endif %}" id="msg-{{ msg.id }}" data-id="{{ msg.id }}">
+  {% if msg.is_pinned %}
+  <div class="pinned-badge">
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="12" height="12">
+      <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+    </svg>
+    Trending Topic
+  </div>
+  {% endif %}
+  <p class="message-text" data-raw="{{ msg.content | e }}">{{ msg.content }}</p>
+  {% if msg.image_filename %}
+  <div class="message-image-container" style="margin-top: 12px;">
+    <img src="/static/uploads/{{ msg.image_filename }}" alt="Uploaded Image" style="max-width: 100%; max-height: 400px; border-radius: var(--radius); border: 1px solid var(--border);">
+  </div>
+  {% endif %}
+  <div class="poll-container" id="poll-{{ msg.id }}"></div>
+  <div class="message-meta">
+    <time class="message-time">{{ msg.timestamp.strftime('%H:%M') }}</time>
+    <div class="meta-actions">
+      <span class="user-delete-container" id="user-del-{{ msg.id }}"></span>
+      <!-- Reaction trigger -->
+      <button class="vote-btn reaction-trigger-btn" onclick="toggleReactionPicker({{ msg.id }}, this)" title="Tambah reaksi" id="react-btn-{{ msg.id }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 13s1.5 2 4 2 4-2 4-2"/>
+          <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+        </svg>
+      </button>
+      <button class="vote-btn upvote-btn" onclick="voteMessage({{ msg.id }}, 'up')" id="upvote-{{ msg.id }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <path d="M12 19V5M5 12l7-7 7 7"/>
+        </svg>
+        <span id="upvote-count-{{ msg.id }}">{{ msg.upvotes }}</span>
+      </button>
+      <button class="vote-btn downvote-btn" onclick="voteMessage({{ msg.id }}, 'down')" id="downvote-{{ msg.id }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <path d="M12 5v14M19 12l-7 7-7-7"/>
+        </svg>
+        <span id="downvote-count-{{ msg.id }}">{{ msg.downvotes }}</span>
+      </button>
+      <button class="reply-toggle-btn" onclick="toggleReply({{ msg.id }}, this)" data-open="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        <span class="reply-label">Balas{% if msg.visible_reply_count > 0 %} · {{ msg.visible_reply_count }}{% endif %}</span>
+      </button>
+      <button class="vote-btn share-msg-btn" onclick="openShareModal({{ msg.id }})" title="Bagikan / Buat Gambar Story" id="share-btn-{{ msg.id }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+        <span class="share-btn-label">Bagikan</span>
+      </button>
+      <button class="vote-btn" onclick="reportMessage({{ msg.id }})" title="Laporkan Pesan" style="color: var(--danger); margin-left: auto;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Active reactions bar -->
+  <div class="reactions-bar" id="reactions-{{ msg.id }}"></div>
+
+  {% if is_moderator %}
+  <div class="msg-mod-controls">
+    <button type="button" class="btn-mod-action" onclick="togglePinMessage({{ msg.id }})">
+      {% if msg.is_pinned %}Lepas Pin{% else %}📌 Pin{% endif %}
+    </button>
+    <button type="button" class="btn-mod-action btn-mod-delete" onclick="deleteMessage({{ msg.id }})">
+      🗑️ Hapus
+    </button>
+  </div>
+  {% endif %}
+
+  <!-- Reply Thread (hidden by default) -->
+  <div class="reply-thread hidden" id="thread-{{ msg.id }}">
+    <div class="reply-list" id="reply-list-{{ msg.id }}">
+      <p class="reply-loading">Memuat balasan…</p>
+    </div>
+    <div class="reply-form">
+      <textarea id="reply-input-{{ msg.id }}" class="reply-textarea" placeholder="Tulis balasan anonim…"
+        maxlength="500" rows="2"></textarea>
+      <div class="reply-form-footer">
+        <span class="reply-char-counter" id="reply-counter-{{ msg.id }}">0 / 500</span>
+        <button class="btn-reply-send" onclick="submitReply({{ msg.id }})">Kirim Balasan</button>
+      </div>
+    </div>
+  </div>
+</article>

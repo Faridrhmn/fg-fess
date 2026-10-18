@@ -1,21 +1,9 @@
-<!DOCTYPE html>
-<html lang="id" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bug & Fitur — fg/fess</title>
-  <meta name="description" content="Sampaikan keluhan bug atau request fitur kepada admin fg/fess." />
-  <link rel="icon" href="/static/favicon.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css" />
-  <script>
-    /* Apply saved theme immediately to prevent flash */
-    (function() {
-      const saved = localStorage.getItem('fgfess_theme') || 'light';
-      document.documentElement.setAttribute('data-theme', saved);
-    })();
-  </script>
+{% extends "base.html" %}
+
+{% block title %}Bug & Fitur — fg/fess{% endblock %}
+{% block meta_desc %}Sampaikan keluhan bug atau request fitur kepada admin fg/fess.{% endblock %}
+
+{% block extra_css %}
   <style>
     .admin-reply-box {
       margin-top: 12px;
@@ -47,27 +35,6 @@
       color: var(--text);
       line-height: 1.6;
       white-space: pre-wrap;
-    }
-    .nav-links {
-      display: flex;
-      gap: 4px;
-    }
-    .nav-links a {
-      color: var(--text-muted);
-      text-decoration: none;
-      font-weight: 500;
-      font-size: 0.875rem;
-      padding: 6px 12px;
-      border-radius: 6px;
-      transition: color 0.2s, background 0.2s;
-    }
-    .nav-links a:hover {
-      color: var(--text);
-      background: var(--surface);
-    }
-    .nav-links a.active {
-      color: var(--primary);
-      background: rgba(19, 141, 130, 0.1);
     }
     .fb-card {
       background: var(--surface);
@@ -103,20 +70,21 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
       border-bottom: 1px solid var(--border);
     }
     .feed-section-title {
       font-size: 1rem;
       font-weight: 600;
       color: var(--text);
+      margin: 0;
     }
     .feed-section-count {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       color: var(--text-muted);
       background: var(--bg);
-      padding: 3px 10px;
+      padding: 2px 8px;
       border-radius: 99px;
       border: 1px solid var(--border);
     }
@@ -149,31 +117,9 @@
       gap: 5px;
     }
   </style>
-</head>
-<body>
-  <header class="site-header">
-    <div class="container header-inner">
-      <div class="logo">
-        <a href="/" style="text-decoration: none; color: inherit;">
-          <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
-        </a>
-      </div>
-      <nav class="nav-links">
-        <a href="/">Board Utama</a>
-        <a href="/feedback" class="active">Bug & Fitur</a>
-      </nav>
-      <button id="darkModeToggle" title="Toggle dark mode" aria-label="Toggle dark mode" onclick="toggleDarkMode()">
-        <svg id="darkModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-          <circle cx="12" cy="12" r="5"/>
-          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-        </svg>
-      </button>
-    </div>
-  </header>
+{% endblock %}
 
+{% block content %}
   <main class="container main-layout">
     <!-- Compose Box -->
     <section class="compose-card" id="compose">
@@ -247,7 +193,9 @@
       {% endif %}
     </section>
   </main>
+{% endblock %}
 
+{% block extra_scripts %}
   <script>
     const fbInput = document.getElementById('feedbackInput');
     const charCounter = document.getElementById('charCounter');
@@ -278,16 +226,19 @@
       const timeStr = date.toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})
                     + ', ' + date.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'});
       return `
-        <div class="fb-card" id="fbc-${fb.id}" style="animation: msg-in .3s ease-out;">
-          <p class="fb-card-text">${escHtml(fb.content)}</p>
+        <div class="fb-card" id="fbc-${fb.id}">
+          <p class="fb-card-text">${escapeHtml(fb.content)}</p>
           <div class="fb-card-meta">
-            <time class="message-time" style="margin:0;">${timeStr}</time>
+            <time class="message-time" style="margin: 0;">${timeStr}</time>
           </div>
-        </div>`;
+        </div>
+      `;
     }
 
-    function escHtml(str) {
-      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
     }
 
     async function submitFeedback() {
@@ -336,6 +287,4 @@
       }
     }
   </script>
-  <script src="/static/theme.js"></script>
-</body>
-</html>
+{% endblock %}

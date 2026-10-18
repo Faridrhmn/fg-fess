@@ -1,0 +1,23 @@
+<!-- Hashtag Sidebar Component -->
+<aside class="hashtag-sidebar" id="hashtagSidebar">
+  <div class="hashtag-sidebar-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13">
+      <line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/>
+      <line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>
+    </svg>
+    Trending Hashtag
+  </div>
+  <div id="hashtagList">
+    <!-- Skeleton loading -->
+    <div class="hashtag-sidebar-loading">
+      <div class="hashtag-skel"></div>
+      <div class="hashtag-skel" style="width:80%;"></div>
+      <div class="hashtag-skel" style="width:90%;"></div>
+      <div class="hashtag-skel" style="width:70%;"></div>
+      <div class="hashtag-skel" style="width:85%;"></div>
+    </div>
+  </div>
+  <button class="hashtag-clear-btn" id="hashtagClearBtn" style="display:none;" onclick="clearHashtagFilter()">
+    ✕ Hapus filter
+  </button>
+</aside>

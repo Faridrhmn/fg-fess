@@ -1,0 +1,40 @@
+<header class="site-header">
+  <div class="container-wide header-inner">
+    <!-- Logo -->
+    <div class="logo">
+      <a href="/" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
+        <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
+      </a>
+    </div>
+
+    <!-- Nav Links (Lampiran 3) -->
+    <nav class="nav-links">
+      {% include "components/header/room_selector.html" %}
+      <a href="/feedback" class="{% if request.path.startswith('/feedback') %}active{% endif %}">Bug &amp; Fitur</a>
+      {% if current_user.is_authenticated %}
+        {% if current_user.is_superadmin %}
+          <a href="/admin" class="nav-admin-link">Admin</a>
+        {% else %}
+          <a href="/my-rooms" class="nav-admin-link">My Rooms</a>
+        {% endif %}
+      {% endif %}
+    </nav>
+
+    <!-- Header Actions (Theme Toggle & Subtle Logout if logged in) -->
+    <div style="display: flex; align-items: center; gap: 8px;">
+      {% if current_user.is_authenticated %}
+        <a href="/logout" class="nav-login-link" style="font-size: 0.82rem; color: var(--danger); font-weight: 500; text-decoration: none; padding: 4px 8px; border-radius: 6px;" title="Logout @{{ current_user.username }}">Logout</a>
+      {% endif %}
+
+      <button id="darkModeToggle" title="Toggle dark mode" aria-label="Toggle dark mode" onclick="toggleDarkMode()">
+        <svg id="darkModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>

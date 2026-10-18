@@ -1,0 +1,55 @@
+<div class="nav-room-dropdown-wrapper" id="roomSelectorWrapper" style="position: relative; display: inline-flex;">
+  <button type="button" class="nav-room-btn {% if not request.path.startswith('/feedback') %}active{% endif %}" id="roomSelectorBtn" onclick="toggleRoomDropdown(event)" aria-expanded="false" title="Pilih Room">
+    <span>{{ current_room.name if (current_room and current_room.slug != 'general') else 'Board Utama' }}</span>
+    <svg class="room-selector-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12" style="margin-left: 2px; transition: transform 0.2s;">
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+  </button>
+
+  <!-- Floating Dropdown Menu -->
+  <div class="room-dropdown-menu" id="roomDropdownMenu">
+    <div class="room-dropdown-search-box">
+      <svg class="room-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" id="globalRoomSearchInput" class="room-dropdown-search-input" placeholder="Cari nama room..." oninput="filterGlobalRoomList(this.value)" autocomplete="off" />
+    </div>
+
+    <div class="room-dropdown-header">ROOM PUBLIK POPULER</div>
+    <div class="room-dropdown-list" id="globalRoomList">
+      {% if global_public_rooms %}
+        {% for r in global_public_rooms %}
+        <a href="/r/{{ r.slug }}" class="room-dropdown-item {% if current_room and current_room.slug == r.slug %}active{% endif %}" data-room-name="{{ r.name | lower }}" data-room-slug="{{ r.slug }}">
+          <span class="room-dropdown-item-icon">{{ '💬' if r.slug == 'general' else '🪐' }}</span>
+          <div class="room-dropdown-item-info">
+            <div class="room-dropdown-item-title">{{ r.name }}</div>
+            <div class="room-dropdown-item-meta">/r/{{ r.slug }}</div>
+          </div>
+          {% if current_room and current_room.slug == r.slug %}
+          <span class="room-dropdown-badge-active">✓ Aktif</span>
+          {% endif %}
+        </a>
+        {% endfor %}
+      {% else %}
+        <a href="/" class="room-dropdown-item active" data-room-name="board utama" data-room-slug="general">
+          <span class="room-dropdown-item-icon">💬</span>
+          <div class="room-dropdown-item-info">
+            <div class="room-dropdown-item-title">Board Utama</div>
+            <div class="room-dropdown-item-meta">/r/general</div>
+          </div>
+          <span class="room-dropdown-badge-active">✓ Aktif</span>
+        </a>
+      {% endif %}
+      <div id="roomDropdownEmpty" style="display: none; padding: 14px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+        Tidak ada room yang cocok.
+      </div>
+    </div>
+
+    <div class="room-dropdown-footer">
+      <button type="button" class="btn-dropdown-create-room" onclick="openCreateRoomModal()">
+        <span>➕</span> Buat Room Baru
+      </button>
+    </div>
+  </div>
+</div>

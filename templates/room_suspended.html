@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Room Dinonaktifkan — {{ room.name }}</title>
+  <link rel="icon" href="/static/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    (function() {
+      const saved = localStorage.getItem('fgfess_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
+</head>
+<body class="login-body">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-logo" style="margin-bottom: 8px;">
+        <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">room</span>
+      </div>
+      <div style="font-size: 2.2rem; margin: 10px 0 6px;">🚫</div>
+      <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0 0 6px; color: var(--danger, #e53e3e);">Room Dinonaktifkan</h2>
+      <p class="login-sub" style="margin-bottom: 20px;">
+        Room <strong>{{ room.name }}</strong> telah dibekukan sementara oleh Administrator platform karena indikasi pelanggaran aturan komunitas.
+      </p>
+
+      <div style="margin-top: 24px; font-size: 0.85rem; color: var(--text-muted);">
+        <a href="/" style="display: inline-block; padding: 8px 16px; background: var(--primary); color: #fff; border-radius: 6px; text-decoration: none; font-weight: 500;">Kembali ke Lobi Utama</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

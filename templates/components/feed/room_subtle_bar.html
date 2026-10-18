@@ -1,0 +1,24 @@
+<!-- Subtle Room Breadcrumb Bar (Hanya tampil di Room Khusus /r/<slug>) -->
+<div class="room-subtle-bar">
+  <div class="room-subtle-info">
+    <a href="/" class="room-back-link">← Lobi Utama</a>
+    <span class="room-subtle-sep">/</span>
+    <span class="room-subtle-title">
+      {% if current_room.is_private %}🔒{% else %}🪐{% endif %} {{ current_room.name }}
+    </span>
+    {% if current_room.is_private %}
+      <span class="room-pill private">Privat</span>
+    {% endif %}
+    {% if is_moderator %}
+      <span class="room-pill moderator" title="Kamu adalah moderator di room ini">🛡️ Mode Moderator</span>
+    {% endif %}
+  </div>
+  {% if is_moderator %}
+    <button type="button" class="btn-subtle-settings" onclick="openRoomSettingsModal()" title="Pengaturan Room">
+      <span>⚙️</span> Pengaturan Room
+    </button>
+  {% endif %}
+</div>
+{% if current_room.description %}
+<p class="room-subtle-desc">{{ current_room.description }}</p>
+{% endif %}

@@ -1,0 +1,74 @@
+<!-- Modal Buat Room Baru (Global di Seluruh Halaman) -->
+<div id="createRoomModal" class="room-modal-overlay hidden" onclick="if(event.target === this) closeCreateRoomModal()">
+  <div class="room-modal-card">
+    <div class="room-modal-head">
+      <h3 class="room-modal-title">➕ Buat Room Baru</h3>
+      <button type="button" class="room-modal-close" onclick="closeCreateRoomModal()">&times;</button>
+    </div>
+    <form id="createRoomForm" onsubmit="handleCreateRoomSubmit(event)">
+      <div id="createRoomError" class="alert alert-danger" style="display: none; margin-bottom: 14px;"></div>
+
+      <div class="form-group" style="margin-bottom: 12px; text-align: left;">
+        <label class="form-label" style="font-weight: 600; font-size: 0.85rem;">Nama Room *</label>
+        <input type="text" id="cr_name" class="form-input" placeholder="contoh: Curhat FILKOM 2024" required oninput="autoGenerateSlug(this.value)" />
+      </div>
+
+      <div class="form-group" style="margin-bottom: 12px; text-align: left;">
+        <label class="form-label" style="font-weight: 600; font-size: 0.85rem;">Slug URL (/r/...) *</label>
+        <input type="text" id="cr_slug" class="form-input" placeholder="contoh: curhat-filkom-2024" required />
+        <small style="color: var(--text-muted); font-size: 0.75rem;">Hanya huruf kecil, angka, dan strip (3-40 karakter).</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 14px; text-align: left;">
+        <label class="form-label" style="font-weight: 600; font-size: 0.85rem;">Deskripsi Singkat</label>
+        <textarea id="cr_desc" class="form-input" rows="2" placeholder="Jelaskan tujuan atau topik obrolan room ini..."></textarea>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 14px; background: var(--bg); padding: 12px; border-radius: 8px; border: 1px solid var(--border); text-align: left;">
+        <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.88rem; cursor: pointer;">
+          <input type="checkbox" id="cr_is_private" onchange="togglePrivatePasscode(this.checked)" />
+          <span>🔒 Jadikan Private Room</span>
+        </label>
+        <p style="color: var(--text-muted); font-size: 0.78rem; margin: 4px 0 0 24px;">
+          Private room tidak akan tampil di jelajah publik dan hanya bisa dimasuki pengunjung yang memiliki Visitor Passcode.
+        </p>
+
+        <div id="cr_passcode_container" style="display: none; margin-top: 10px; padding-left: 24px;">
+          <label class="form-label" style="font-weight: 600; font-size: 0.82rem;">Visitor Passcode (Kunci Masuk Room) *</label>
+          <input type="password" id="cr_passcode" class="form-input" placeholder="Masukkan passcode untuk pengunjung..." />
+        </div>
+      </div>
+
+      {% if not current_user.is_authenticated %}
+      <div style="background: var(--bg); padding: 14px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 16px; text-align: left;">
+        <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 8px; color: var(--text);">
+          Akun Pengelola (Room Admin)
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <button type="button" id="tabRegisterBtn" class="btn-mod-action" style="flex: 1; padding: 6px; font-weight: 600; background: var(--surface);" onclick="switchAuthTab('register')">Buat Akun Baru</button>
+          <button type="button" id="tabLoginBtn" class="btn-mod-action" style="flex: 1; padding: 6px; font-weight: 600;" onclick="switchAuthTab('login')">Login Akun Lama</button>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 10px;">
+          <label class="form-label" style="font-size: 0.8rem;">Username Admin</label>
+          <input type="text" id="cr_username" class="form-input" placeholder="Username untuk kelola room..." required />
+        </div>
+        <div class="form-group" style="margin-bottom: 4px;">
+          <label class="form-label" style="font-size: 0.8rem;">Password Admin</label>
+          <input type="password" id="cr_password" class="form-input" placeholder="Password rahasia Anda..." required />
+        </div>
+        <small id="authModeHint" style="color: var(--text-muted); font-size: 0.75rem;">Akun ini akan otomatis dibuat & menjadi pemilik room untuk moderasi.</small>
+      </div>
+      {% else %}
+      <div style="margin-bottom: 16px; font-size: 0.85rem; color: var(--text-muted); background: var(--bg); padding: 10px; border-radius: 8px; text-align: left;">
+        Room ini otomatis ditautkan ke akun Anda: <strong>@{{ current_user.username }}</strong>
+      </div>
+      {% endif %}
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn-room-action" onclick="closeCreateRoomModal()">Batal</button>
+        <button type="submit" id="btnSubmitCreateRoom" class="btn-room-action btn-room-primary">Buat Room Sekarang</button>
+      </div>
+    </form>
+  </div>
+</div>

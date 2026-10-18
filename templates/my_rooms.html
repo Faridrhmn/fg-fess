@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Room Saya — fg/fess{% endblock %}
+
+{% block extra_css %}
+  <style>
+    .myrooms-container {
+      max-width: 860px;
+      margin: 32px auto;
+      padding: 0 16px;
+    }
+    .myrooms-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .myrooms-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+    .myrooms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .room-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .room-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+    }
+    .room-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .room-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .room-badge.public { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .room-badge.private { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .room-badge.suspended { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .room-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0 0 4px;
+      text-decoration: none;
+    }
+    .room-slug {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .room-desc {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-bottom: 16px;
+      flex-grow: 1;
+    }
+    .room-stats {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .btn-create-room {
+      background: var(--primary);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-create-room:hover {
+      opacity: 0.9;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <main class="myrooms-container">
+    <div class="myrooms-header">
+      <div>
+        <h1 class="myrooms-title">📂 Room Kelolaan Saya</h1>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 4px 0 0;">
+          Masuk sebagai: <strong>@{{ current_user.username }}</strong>
+        </p>
+      </div>
+      <button type="button" class="btn-create-room" onclick="openCreateRoomModal()">
+        <span>➕</span> Buat Room Baru
+      </button>
+    </div>
+
+    {% if rooms %}
+      <div class="myrooms-grid">
+        {% for r in rooms %}
+          <div class="room-card">
+            <div>
+              <div class="room-card-head">
+                {% if r.is_suspended %}
+                  <span class="room-badge suspended">⛔ Ditangguhkan</span>
+                {% elif r.is_private %}
+                  <span class="room-badge private">🔒 Privat</span>
+                {% else %}
+                  <span class="room-badge public">🌐 Publik</span>
+                {% endif %}
+                <span style="font-size: 0.75rem; color: var(--text-muted);">{{ r.created_at.strftime('%d/%m/%Y') }}</span>
+              </div>
+              <a href="/r/{{ r.slug }}" class="room-name">{{ r.name }}</a>
+              <div class="room-slug">/r/{{ r.slug }}</div>
+              <p class="room-desc">{{ r.description or 'Tidak ada deskripsi.' }}</p>
+            </div>
+            <div class="room-stats">
+              <span>💬 {{ r.messages.count() }} pesan</span>
+              <a href="/r/{{ r.slug }}" style="color: var(--primary); font-weight: 600; text-decoration: none;">Buka Room →</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div style="background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 48px; text-align: center;">
+        <div style="font-size: 2.5rem; margin-bottom: 12px;">🪴</div>
+        <h3 style="font-size: 1.15rem; margin: 0 0 6px; color: var(--text);">Belum Ada Room</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+          Kamu belum membuat room khusus. Buat room sekarang untuk membagi link ke komunitasmu!
+        </p>
+        <button type="button" class="btn-create-room" onclick="openCreateRoomModal()">
+          <span>➕</span> Buat Room Pertama
+        </button>
+      </div>
+    {% endif %}
+  </main>
+{% endblock %}

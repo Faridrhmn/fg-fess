@@ -1,0 +1,126 @@
+<!-- Feed List Component -->
+<section class="feed-section content-main">
+  <div class="feed-header">
+    <h1 class="feed-title">Papan Pesan</h1>
+    <span class="feed-count" id="feedCount">{{ messages.total + pinned_messages|length }} pesan</span>
+  </div>
+
+  <!-- Mobile hashtag strip (visible on ≤920px, hidden on desktop via CSS) -->
+  <div class="hashtag-mobile-strip" id="hashtagMobileStrip"></div>
+
+  <!-- Hashtag filter active banner (injected by JS) -->
+  <div id="hashtagFilterBanner" style="display:none;"></div>
+
+  {# Determine current page #}
+  {% set current_page = request.args.get('page', 1) | int %}
+
+  {# Pinned Messages on Page 1 #}
+  {% if current_page == 1 %}
+  <div class="feed pinned-feed {% if not pinned_messages %}hidden{% endif %}" id="pinnedContainer" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
+    <h2 class="section-title" style="font-size: 0.9rem; margin-bottom: 4px; color: var(--warn); display: flex; align-items: center; gap: 6px;">
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16">
+        <path d="M16 3H8C7.4 3 7 3.4 7 4V13L5 16V18H11V22L12 23L13 22V18H19V16L17 13V4C17 3.4 16.6 3 16 3Z"/>
+      </svg>
+      Trending Topics
+    </h2>
+    <div id="pinnedMessagesList" style="display: flex; flex-direction: column; gap: 10px;">
+      {% if pinned_messages %}
+        {% for msg in pinned_messages %}
+          {% include "components/feed/message_card.html" with context %}
+        {% endfor %}
+      {% endif %}
+    </div>
+    <hr style="border: 0; border-top: 1px dashed var(--border-2); margin-top: 14px;">
+  </div>
+  {% endif %}
+
+  {% set latest_unpinned = messages.items[0].id if messages.items else 0 %}
+  {% set latest_pinned = pinned_messages | map(attribute='id') | max if pinned_messages else 0 %}
+  {% set latest_overall = latest_unpinned if latest_unpinned > latest_pinned else latest_pinned %}
+
+  {# Feed Messages #}
+  <div class="feed" id="feedContainer" data-page="{{ current_page }}"
+    data-latest-id="{{ latest_overall }}"
+    data-unpinned-total="{{ messages.total }}">
+
+    {% if messages.items %}
+    {% set ns = namespace(last_key=None) %}
+    {% for msg in messages.items %}
+      {# Group by date using Indonesian locale filters #}
+      {% set day_key = msg.timestamp | tgl_key %}
+      {% if day_key != ns.last_key %}
+      {% set ns.last_key = day_key %}
+      <div class="date-separator" data-date-key="{{ day_key }}">
+        <span class="date-label">{{ msg.timestamp | tgl_id }}</span>
+      </div>
+      {% endif %}
+
+      {% include "components/feed/message_card.html" with context %}
+    {% endfor %}
+    {% else %}
+    <div class="empty-state" id="emptyState">
+      <p>Belum ada pesan. Jadilah yang pertama! 👆</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Pagination Component -->
+  {% if messages.pages > 1 %}
+  <nav class="pagination" aria-label="Navigasi halaman">
+    {% if messages.has_prev %}
+    <a href="?page={{ messages.prev_num }}" class="page-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+      Sebelumnya
+    </a>
+    {% else %}
+    <span class="page-btn page-btn--disabled">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+      Sebelumnya
+    </span>
+    {% endif %}
+
+    <div class="page-numbers">
+      {% set start = [messages.page - 2, 1] | max %}
+      {% set end = [messages.page + 2, messages.pages] | min %}
+
+      {% if start > 1 %}
+      <a href="?page=1" class="page-num">1</a>
+      {% if start > 2 %}<span class="page-ellipsis">…</span>{% endif %}
+      {% endif %}
+
+      {% for p in range(start, end + 1) %}
+      {% if p == messages.page %}
+      <span class="page-num page-num--active">{{ p }}</span>
+      {% else %}
+      <a href="?page={{ p }}" class="page-num">{{ p }}</a>
+      {% endif %}
+      {% endfor %}
+
+      {% if end < messages.pages %}
+        {% if end < messages.pages - 1 %}<span class="page-ellipsis">…</span>{% endif %}
+        <a href="?page={{ messages.pages }}" class="page-num">{{ messages.pages }}</a>
+      {% endif %}
+    </div>
+
+    {% if messages.has_next %}
+    <a href="?page={{ messages.next_num }}" class="page-btn">
+      Berikutnya
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <polyline points="9 18 15 12 9 6" />
+      </svg>
+    </a>
+    {% else %}
+    <span class="page-btn page-btn--disabled">
+      Berikutnya
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <polyline points="9 18 15 12 9 6" />
+      </svg>
+    </span>
+    {% endif %}
+  </nav>
+  {% endif %}
+</section>

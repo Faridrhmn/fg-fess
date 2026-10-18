@@ -1,0 +1,39 @@
+<div class="header-right-actions">
+  {% if current_user.is_authenticated %}
+  <div class="user-menu-wrapper" id="userMenuWrapper">
+    <button type="button" class="user-menu-trigger" id="userMenuBtn" onclick="toggleUserDropdown(event)" aria-expanded="false" title="Menu Akun">
+      <span class="user-avatar-initial">{{ current_user.username[0]|upper }}</span>
+      <span class="user-menu-name">@{{ current_user.username }}</span>
+      <svg class="user-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <div class="user-dropdown-menu" id="userDropdownMenu">
+      <a href="/my-rooms" class="user-dropdown-item">
+        <span>📂</span> Room Saya
+      </a>
+      {% if current_user.is_superadmin %}
+      <a href="/admin" class="user-dropdown-item superadmin-link">
+        <span>🛡️</span> Master Admin
+      </a>
+      {% endif %}
+      <div class="user-dropdown-divider"></div>
+      <a href="/logout" class="user-dropdown-item logout-link">
+        <span>🚪</span> Keluar
+      </a>
+    </div>
+  </div>
+  {% else %}
+  <a href="/login" class="nav-link-login">Masuk</a>
+  {% endif %}
+
+  <button id="darkModeToggle" title="Ganti mode gelap/terang" aria-label="Toggle dark mode" onclick="toggleDarkMode()">
+    <svg id="darkModeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  </button>
+</div>

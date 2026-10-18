@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}fg/fess — gedebog{% endblock %}</title>
+  <meta name="description"
+    content="{% block meta_desc %}Tempat berbagi pesan, cerita, dan perasaan secara anonim. Kirim apa yang ada di pikiranmu.{% endblock %}" />
+  <link rel="icon" href="/static/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    /* Prevent flash of unstyled theme */
+    (function () {
+      const saved = localStorage.getItem('fgfess_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
+  {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+  <!-- Header Component Global -->
+  {% include "components/header/site_header.html" %}
+
+  <!-- Konten Spesifik Halaman Anak -->
+  {% block content %}{% endblock %}
+
+  <!-- Modal Global: Buat Room Baru -->
+  {% include "components/modals/modal_create_room.html" %}
+
+  <!-- Shared Core Scripts -->
+  <script src="/static/theme.js"></script>
+  <script src="/static/room-nav.js"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+
+</html>

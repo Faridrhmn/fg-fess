@@ -1,11 +1,11 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 import datetime
@@ -35,6 +35,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_timeout': 20,
     'pool_recycle': 300,
 }
+app.config['SQLALCHEMY_SESSION_OPTIONS'] = {'expire_on_commit': False}
 
 # ─── Indonesian Date Formatter ─────────────────────────────────────────────────
 _HARI  = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu']
@@ -56,6 +57,14 @@ def tgl_id_filter(dt):
 @app.template_filter('tgl_key')
 def tgl_key_filter(dt):
     return fmt_date_key(dt)
+
+@app.context_processor
+def inject_global_data():
+    try:
+        global_public_rooms = Room.query.filter_by(is_suspended=False, is_private=False).order_by(Room.last_active_at.desc()).limit(20).all()
+    except Exception:
+        global_public_rooms = []
+    return dict(global_public_rooms=global_public_rooms)
 
 @app.after_request
 def add_header(response):
@@ -101,42 +110,64 @@ def is_feedback_rate_limited(ip):
     _feedback_rate_limit_store[ip] = timestamps
     return False
 
-db = SQLAlchemy(app)
+db = SQLAlchemy(app, session_options={"expire_on_commit": False})
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # ─── Models ───────────────────────────────────────────────────────────────────
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
-    password = db.Column(db.String(150), nullable=False)
-
 def get_wib_time():
     """Returns the current time in WIB (UTC+7)."""
     return datetime.datetime.utcnow() + datetime.timedelta(hours=7)
 
-class Message(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    content   = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=get_wib_time)
-    is_hidden = db.Column(db.Boolean, default=False)
-    parent_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
-    secret_token = db.Column(db.String(36), nullable=True)  # For 1-minute delete feature
-    location = db.Column(db.String(100), default="Tidak diketahui")
-    upvotes = db.Column(db.Integer, default=0)
-    downvotes = db.Column(db.Integer, default=0)
-    is_pinned = db.Column(db.Boolean, default=False)
-    pinned_until = db.Column(db.DateTime, nullable=True)
-    image_filename = db.Column(db.String(255), nullable=True)
-    reports = db.Column(db.Integer, default=0)
+class User(UserMixin, db.Model):
+    id            = db.Column(db.Integer, primary_key=True)
+    username      = db.Column(db.String(150), unique=True, nullable=False)
+    password      = db.Column(db.String(255), nullable=False)
+    is_superadmin = db.Column(db.Boolean, default=False)
+    created_at    = db.Column(db.DateTime, default=get_wib_time)
+
+    # Relationship to owned rooms
+    rooms = db.relationship('Room', backref='owner', lazy=True)
+
+class Room(db.Model):
+    __tablename__ = 'room'
+    id                   = db.Column(db.Integer, primary_key=True)
+    slug                 = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    name                 = db.Column(db.String(100), nullable=False)
+    description          = db.Column(db.String(255), nullable=True)
+    is_private           = db.Column(db.Boolean, default=False)
+    visitor_passcode_hash = db.Column(db.String(255), nullable=True)
+    owner_id             = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    is_suspended         = db.Column(db.Boolean, default=False)
+    created_at           = db.Column(db.DateTime, default=get_wib_time)
+    last_active_at       = db.Column(db.DateTime, default=get_wib_time)
 
     # Relationships
-    replies   = db.relationship('Message',
-                                backref=db.backref('parent', remote_side='Message.id'),
-                                lazy='dynamic',
-                                foreign_keys='Message.parent_id')
+    messages = db.relationship('Message', backref='room', lazy='dynamic', cascade='all, delete-orphan')
+
+class Message(db.Model):
+    id           = db.Column(db.Integer, primary_key=True)
+    room_id      = db.Column(db.Integer, db.ForeignKey('room.id', ondelete='CASCADE'), nullable=True)
+    content      = db.Column(db.Text, nullable=False)
+    timestamp    = db.Column(db.DateTime, default=get_wib_time)
+    is_hidden    = db.Column(db.Boolean, default=False)
+    parent_id    = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
+    secret_token = db.Column(db.String(36), nullable=True)  # For 1-minute delete feature
+    location     = db.Column(db.String(100), default="Tidak diketahui")
+    upvotes      = db.Column(db.Integer, default=0)
+    downvotes    = db.Column(db.Integer, default=0)
+    is_pinned    = db.Column(db.Boolean, default=False)
+    pinned_until = db.Column(db.DateTime, nullable=True)
+    image_filename = db.Column(db.String(255), nullable=True)
+    reports      = db.Column(db.Integer, default=0)
+
+    # Relationships
+    replies      = db.relationship('Message',
+                                   backref=db.backref('parent', remote_side='Message.id'),
+                                   lazy='dynamic',
+                                   foreign_keys='Message.parent_id')
 
     @property
     def visible_reply_count(self):
@@ -210,18 +241,41 @@ class Announcement(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    try:
+        return db.session.get(User, int(user_id))
+    except Exception:
+        return None
 
 # ─── Public Routes ─────────────────────────────────────────────────────────────
 
-@app.route('/')
-def index():
-    """Public menfess board - shows all visible top-level messages."""
+def check_room_access(room):
+    """Check if visitor or authenticated user has access and moderation privileges."""
+    is_authorized = not room.is_private
+    is_moderator = False
+    if current_user.is_authenticated:
+        user_id = current_user.get_id()
+        is_sa = getattr(current_user, 'is_superadmin', False)
+        if is_sa or (room.owner_id is not None and str(room.owner_id) == str(user_id)):
+            is_authorized = True
+            is_moderator = True
+    if not is_authorized and session.get(f'room_auth_{room.id}') is True:
+        is_authorized = True
+    return is_authorized, is_moderator
+
+def render_room_page(slug='general'):
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if room.is_suspended and not (current_user.is_authenticated and current_user.is_superadmin):
+        return render_template('room_suspended.html', room=room), 403
+
+    is_authorized, is_moderator = check_room_access(room)
+    if not is_authorized:
+        return render_template('room_gate.html', room=room)
+
     page = request.args.get('page', 1, type=int)
     per_page = 20
-    
-    # Unpin messages if their pinned_until has expired
-    expired_pins = Message.query.filter(Message.is_pinned == True, Message.pinned_until < get_wib_time()).all()
+
+    # Unpin messages in this room if their pinned_until has expired
+    expired_pins = Message.query.filter(Message.room_id == room.id, Message.is_pinned == True, Message.pinned_until < get_wib_time()).all()
     if expired_pins:
         for msg in expired_pins:
             msg.is_pinned = False
@@ -229,15 +283,15 @@ def index():
         db.session.commit()
 
     pinned_messages = Message.query\
-        .filter_by(is_hidden=False, is_pinned=True, parent_id=None)\
+        .filter_by(room_id=room.id, is_hidden=False, is_pinned=True, parent_id=None)\
         .order_by(Message.upvotes.desc(), Message.timestamp.desc())\
         .all()
 
     messages = Message.query\
-        .filter_by(is_hidden=False, is_pinned=False, parent_id=None)\
+        .filter_by(room_id=room.id, is_hidden=False, is_pinned=False, parent_id=None)\
         .order_by(Message.timestamp.desc())\
         .paginate(page=page, per_page=per_page, error_out=False)
-    
+
     visible_ids = [m.id for m in pinned_messages] + [m.id for m in messages.items]
     reaction_counts = _get_reactions_bulk(visible_ids)
     voter_token = request.cookies.get('fgfess_voter_id') or request.headers.get('X-Voter-Token')
@@ -248,12 +302,49 @@ def index():
         needs_cookie = True
 
     polls = _get_polls_bulk(visible_ids, voter_token)
+    public_rooms = Room.query.filter_by(is_suspended=False, is_private=False).order_by(Room.last_active_at.desc()).limit(20).all()
 
-    rendered = render_template('index.html', messages=messages, pinned_messages=pinned_messages, reaction_counts=reaction_counts, polls=polls)
+    rendered = render_template('index.html',
+                               current_room=room,
+                               is_moderator=is_moderator,
+                               public_rooms=public_rooms,
+                               messages=messages,
+                               pinned_messages=pinned_messages,
+                               reaction_counts=reaction_counts,
+                               polls=polls)
     resp = app.make_response(rendered)
     if needs_cookie:
         resp.set_cookie('fgfess_voter_id', voter_token, max_age=31536000, samesite='Lax')
     return resp
+
+@app.route('/')
+def index():
+    """Public menfess board - loads default General room."""
+    return render_room_page('general')
+
+@app.route('/r/<slug>')
+def room_view(slug):
+    """Specific room view."""
+    return render_room_page(slug)
+
+@app.route('/r/<slug>/auth', methods=['POST'])
+def room_auth(slug):
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if not room.is_private:
+        return redirect(url_for('room_view', slug=slug))
+
+    passcode = request.form.get('passcode', '').strip()
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    if is_rate_limited(f"auth_{client_ip}"):
+        flash('Terlalu banyak percobaan. Silakan coba lagi sebentar lagi.', 'danger')
+        return render_template('room_gate.html', room=room), 429
+
+    if room.visitor_passcode_hash and check_password_hash(room.visitor_passcode_hash, passcode):
+        session[f'room_auth_{room.id}'] = True
+        return redirect(url_for('room_view', slug=slug))
+    else:
+        flash('Passcode salah. Silakan coba lagi.', 'danger')
+        return render_template('room_gate.html', room=room)
 
 def get_city_from_ip(ip):
     if ip in ('127.0.0.1', 'localhost', '::1') or ip.startswith('192.168.') or ip.startswith('10.'):
@@ -303,12 +394,27 @@ def submit_message():
     if len(content) > 500:
         return jsonify({'error': 'Pesan maksimal 500 karakter.'}), 400
 
-    # Handle reply
+    # Handle reply & resolve room
+    target_room = None
     parent_id = data.get('parent_id')
     if parent_id:
         parent = Message.query.get(parent_id)
         if not parent or parent.is_hidden or parent.parent_id is not None:
             return jsonify({'error': 'Pesan induk tidak valid.'}), 400
+        target_room = parent.room or Room.query.filter_by(slug='general').first()
+    else:
+        room_slug = data.get('room_slug', 'general').strip().lower()
+        target_room = Room.query.filter_by(slug=room_slug).first()
+        if not target_room:
+            target_room = Room.query.filter_by(slug='general').first()
+
+    if target_room.is_suspended:
+        return jsonify({'error': 'Room ini sedang dinonaktifkan.'}), 403
+
+    if target_room.is_private:
+        is_auth, _ = check_room_access(target_room)
+        if not is_auth:
+            return jsonify({'error': 'Akses room privat belum diautentikasi.'}), 403
 
     # Poll validation
     poll_options_raw = data.get('poll_options')
@@ -371,7 +477,7 @@ def submit_message():
                     image.seek(0)
                     image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
     
-    new_msg = Message(content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token, location=location, image_filename=image_filename)
+    new_msg = Message(room_id=target_room.id, content=content, parent_id=parent_id if parent_id else None, secret_token=secret_token, location=location, image_filename=image_filename)
     db.session.add(new_msg)
 
     poll_obj = None
@@ -385,11 +491,12 @@ def submit_message():
             opt = PollOption(poll=poll_obj, text=opt_text, vote_count=0)
             db.session.add(opt)
 
+    target_room.last_active_at = get_wib_time()
     db.session.commit()
 
-    # Total only counts top-level visible messages
-    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
-    unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
+    # Total only counts top-level visible messages in this room
+    total = Message.query.filter_by(room_id=target_room.id, is_hidden=False, parent_id=None).count()
+    unpinned_total = Message.query.filter_by(room_id=target_room.id, is_hidden=False, is_pinned=False, parent_id=None).count()
 
     voter_token = request.cookies.get('fgfess_voter_id') or request.headers.get('X-Voter-Token')
     poll_dict = _format_poll_dict(poll_obj, voter_token) if poll_obj else None
@@ -402,6 +509,7 @@ def submit_message():
         'parent_id': parent_id,
         'message': {
             'id':          new_msg.id,
+            'room_slug':   target_room.slug,
             'content':     new_msg.content,
             'time':        new_msg.timestamp.strftime('%H:%M'),
             'date_key':    fmt_date_key(new_msg.timestamp),
@@ -423,7 +531,7 @@ def submit_message():
         public_msg = resp['message'].copy()
         public_msg.pop('secret_token', None)
         
-        socketio.emit('new_reply', public_msg)
+        socketio.emit('new_reply', public_msg, to=f"room_{target_room.slug}")
     else:
         # Omit secret_token for broadcast
         public_msg = resp['message'].copy()
@@ -435,7 +543,7 @@ def submit_message():
             'message': public_msg,
             'total': total,
             'unpinned_total': unpinned_total
-        })
+        }, to=f"room_{target_room.slug}")
         
     return jsonify(resp)
 
@@ -498,7 +606,8 @@ def vote_message(msg_id):
         'is_pinned': msg.is_pinned,
         'is_hidden': msg.is_hidden
     }
-    socketio.emit('update_vote', {'id': msg_id, 'counts': resp})
+    room_slug = msg.room.slug if msg.room else 'general'
+    socketio.emit('update_vote', {'id': msg_id, 'counts': resp}, to=f"room_{room_slug}")
     return jsonify(resp)
 
 
@@ -517,13 +626,16 @@ def user_delete_message(msg_id):
     if age > 60:
         return jsonify({'error': 'Waktu untuk menghapus (1 menit) sudah habis.'}), 400
         
+    target_room_id = msg.room_id
+    room_slug = msg.room.slug if msg.room else 'general'
+
     db.session.delete(msg)
     db.session.commit()
     
-    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
-    unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
+    total = Message.query.filter_by(room_id=target_room_id, is_hidden=False, parent_id=None).count()
+    unpinned_total = Message.query.filter_by(room_id=target_room_id, is_hidden=False, is_pinned=False, parent_id=None).count()
     
-    socketio.emit('message_deleted', {'id': msg_id, 'total': total, 'unpinned_total': unpinned_total})
+    socketio.emit('message_deleted', {'id': msg_id, 'total': total, 'unpinned_total': unpinned_total}, to=f"room_{room_slug}")
     return jsonify({'success': True})
 
 @app.route('/api/messages/<int:msg_id>/report', methods=['POST'])
@@ -543,17 +655,27 @@ def report_message(msg_id):
 
 @app.route('/api/messages')
 def get_messages():
-    """Fetch top-level messages for live polling. Supports ?since=<id>."""
+    """Fetch top-level messages for live polling. Supports ?since=<id>&room=<slug>."""
     since_id = request.args.get('since', 0, type=int)
+    room_slug = request.args.get('room', 'general').strip().lower()
 
-    query = Message.query.filter_by(is_hidden=False, parent_id=None)
+    room = Room.query.filter_by(slug=room_slug).first()
+    if not room or room.is_suspended:
+        return jsonify({'messages': [], 'total': 0, 'unpinned_total': 0})
+
+    if room.is_private:
+        is_auth, _ = check_room_access(room)
+        if not is_auth:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+    query = Message.query.filter_by(room_id=room.id, is_hidden=False, parent_id=None)
     if since_id:
         query = query.filter(Message.id > since_id)
 
-    msgs  = query.order_by(Message.timestamp.desc()).all()
+    msgs = query.order_by(Message.timestamp.desc()).all()
     
-    total = Message.query.filter_by(is_hidden=False, parent_id=None).count()
-    unpinned_total = Message.query.filter_by(is_hidden=False, is_pinned=False, parent_id=None).count()
+    total = Message.query.filter_by(room_id=room.id, is_hidden=False, parent_id=None).count()
+    unpinned_total = Message.query.filter_by(room_id=room.id, is_hidden=False, is_pinned=False, parent_id=None).count()
 
     msg_ids = [m.id for m in msgs]
     reactions = _get_reactions_bulk(msg_ids)
@@ -668,7 +790,8 @@ def react_message(msg_id):
 
     # Return updated counts for all emojis on this message
     counts = _get_reaction_counts(msg_id)
-    socketio.emit('update_reaction', {'id': msg_id, 'reactions': counts})
+    room_slug = msg.room.slug if msg.room else 'general'
+    socketio.emit('update_reaction', {'id': msg_id, 'reactions': counts}, to=f"room_{room_slug}")
     return jsonify({'success': True, 'action': action, 'reactions': counts})
 
 
@@ -726,7 +849,8 @@ def vote_poll(poll_id):
 
     # Format updated poll for public broadcast and for user response
     poll_public = _format_poll_dict(poll, None)
-    socketio.emit('update_poll', poll_public)
+    poll_room_slug = poll.message.room.slug if poll.message and poll.message.room else 'general'
+    socketio.emit('update_poll', poll_public, to=f"room_{poll_room_slug}")
 
     poll_user = _format_poll_dict(poll, voter_token)
     resp = jsonify({'success': True, 'poll': poll_user, 'voter_token': voter_token})
@@ -940,14 +1064,18 @@ def admin_api_messages():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('admin'))
+        if current_user.is_superadmin:
+            return redirect(url_for('admin'))
+        return redirect(url_for('my_rooms'))
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
             login_user(user)
-            return redirect(url_for('admin'))
+            if user.is_superadmin:
+                return redirect(url_for('admin'))
+            return redirect(url_for('my_rooms'))
         else:
             flash('Username atau password salah.', 'danger')
     return render_template('login.html')
@@ -955,12 +1083,20 @@ def login():
 @app.route('/admin')
 @login_required
 def admin():
-    """Admin dashboard - sees ALL messages including hidden ones."""
+    """Admin dashboard - sees ALL messages including hidden ones (Superadmin only)."""
+    if not current_user.is_superadmin:
+        flash('Akses ditolak. Halaman Master Admin khusus Super Administrator.', 'danger')
+        return redirect(url_for('my_rooms'))
+
     page = request.args.get('page', 1, type=int)
     per_page = 20
     filter_mode = request.args.get('filter', 'all')
+    room_filter = request.args.get('room', 'all')
 
     query = Message.query
+    if room_filter != 'all':
+        query = query.join(Room).filter(Room.slug == room_filter)
+
     if filter_mode == 'hidden':
         query = query.filter_by(is_hidden=True)
     elif filter_mode == 'visible':
@@ -971,10 +1107,13 @@ def admin():
 
     total_visible = Message.query.filter_by(is_hidden=False).count()
     total_hidden = Message.query.filter_by(is_hidden=True).count()
+    all_rooms = Room.query.order_by(Room.created_at.desc()).all()
 
     return render_template('admin.html',
                            messages=messages,
                            filter_mode=filter_mode,
+                           room_filter=room_filter,
+                           all_rooms=all_rooms,
                            total_visible=total_visible,
                            total_hidden=total_hidden)
 
@@ -1151,6 +1290,243 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# ─── Room Routes & Moderation ─────────────────────────────────────────────────
+
+@app.route('/my-rooms')
+@login_required
+def my_rooms():
+    if current_user.is_superadmin:
+        rooms = Room.query.order_by(Room.created_at.desc()).all()
+    else:
+        rooms = Room.query.filter_by(owner_id=current_user.id).order_by(Room.created_at.desc()).all()
+    return render_template('my_rooms.html', rooms=rooms)
+
+@app.route('/api/rooms', methods=['GET'])
+def get_public_rooms():
+    """List public rooms or search public rooms."""
+    query_str = request.args.get('q', '').strip().lower()
+    base_query = Room.query.filter_by(is_suspended=False, is_private=False)
+    if query_str:
+        base_query = base_query.filter(Room.name.ilike(f'%{query_str}%') | Room.slug.ilike(f'%{query_str}%'))
+    rooms = base_query.order_by(Room.last_active_at.desc()).limit(30).all()
+    return jsonify({
+        'rooms': [
+            {
+                'id': r.id,
+                'name': r.name,
+                'slug': r.slug,
+                'description': r.description,
+                'is_private': r.is_private,
+                'message_count': r.messages.filter_by(is_hidden=False, parent_id=None).count()
+            } for r in rooms
+        ]
+    })
+
+@app.route('/api/rooms/create', methods=['POST'])
+def create_room():
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    if is_rate_limited(f"create_room_{client_ip}"):
+        return jsonify({'error': 'Terlalu banyak permintaan buat room. Silakan tunggu 1 menit.'}), 429
+
+    data = request.get_json() or request.form
+    name = data.get('name', '').strip()
+    slug = data.get('slug', '').strip().lower()
+    description = data.get('description', '').strip()
+    is_private = str(data.get('is_private', '')).lower() in ('true', '1', 'on')
+    visitor_passcode = data.get('visitor_passcode', '').strip()
+
+    auth_mode = data.get('auth_mode', 'existing')
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+
+    if not name:
+        return jsonify({'error': 'Nama room wajib diisi.'}), 400
+
+    import re
+    if not slug:
+        slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+
+    if not re.match(r'^[a-z0-9\-]{3,40}$', slug):
+        return jsonify({'error': 'Slug hanya boleh huruf kecil, angka, dan strip (3-40 karakter).'}), 400
+
+    if slug in ('general', 'admin', 'login', 'logout', 'api', 'feedback', 'static', 'my-rooms'):
+        return jsonify({'error': f'Slug "{slug}" tidak boleh digunakan karena merupakan kata cadangan sistem.'}), 400
+
+    if Room.query.filter_by(slug=slug).first():
+        return jsonify({'error': f'Slug "/r/{slug}" sudah digunakan. Silakan pilih slug lain.'}), 400
+
+    if is_private and not visitor_passcode:
+        return jsonify({'error': 'Room privat wajib memiliki Visitor Passcode.'}), 400
+
+    owner = None
+    if current_user.is_authenticated:
+        owner = current_user
+    else:
+        if auth_mode == 'register':
+            if not username or not password:
+                return jsonify({'error': 'Username dan password admin wajib diisi.'}), 400
+            if len(username) < 3 or len(password) < 6:
+                return jsonify({'error': 'Username min 3 karakter, password min 6 karakter.'}), 400
+            if User.query.filter_by(username=username).first():
+                return jsonify({'error': 'Username sudah terdaftar. Silakan login atau pilih username lain.'}), 400
+
+            owner = User(
+                username=username,
+                password=generate_password_hash(password, method='pbkdf2:sha256'),
+                is_superadmin=False
+            )
+            db.session.add(owner)
+            db.session.commit()
+            login_user(owner)
+        elif auth_mode == 'login':
+            if not username or not password:
+                return jsonify({'error': 'Silakan masukkan username dan password akun admin Anda.'}), 400
+            existing_user = User.query.filter_by(username=username).first()
+            if not existing_user or not check_password_hash(existing_user.password, password):
+                return jsonify({'error': 'Username atau password admin salah.'}), 401
+            owner = existing_user
+            login_user(owner)
+        else:
+            return jsonify({'error': 'Silakan login atau daftarkan akun admin untuk mengelola room ini.'}), 400
+
+    visitor_passcode_hash = None
+    if is_private:
+        visitor_passcode_hash = generate_password_hash(visitor_passcode, method='pbkdf2:sha256')
+
+    new_room = Room(
+        name=name,
+        slug=slug,
+        description=description,
+        is_private=is_private,
+        visitor_passcode_hash=visitor_passcode_hash,
+        owner_id=owner.id if owner else None,
+        is_suspended=False
+    )
+    db.session.add(new_room)
+    db.session.commit()
+
+    if is_private:
+        session[f'room_auth_{new_room.id}'] = True
+
+    return jsonify({
+        'success': True,
+        'redirect_url': f'/r/{slug}',
+        'room': {
+            'id': new_room.id,
+            'name': new_room.name,
+            'slug': new_room.slug,
+            'is_private': new_room.is_private
+        }
+    })
+
+@app.route('/api/room/<slug>/message/<int:msg_id>/delete', methods=['POST'])
+@login_required
+def room_delete_message(slug, msg_id):
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if not (current_user.is_superadmin or room.owner_id == current_user.id):
+        return jsonify({'error': 'Akses ditolak.'}), 403
+
+    msg = Message.query.filter_by(id=msg_id, room_id=room.id).first_or_404()
+    db.session.delete(msg)
+    db.session.commit()
+
+    pub_total = Message.query.filter_by(room_id=room.id, is_hidden=False, parent_id=None).count()
+    pub_unpinned = Message.query.filter_by(room_id=room.id, is_hidden=False, is_pinned=False, parent_id=None).count()
+    socketio.emit('message_deleted', {'id': msg_id, 'total': pub_total, 'unpinned_total': pub_unpinned}, to=f"room_{room.slug}")
+    return jsonify({'success': True})
+
+@app.route('/api/room/<slug>/message/<int:msg_id>/toggle', methods=['POST'])
+@login_required
+def room_toggle_message(slug, msg_id):
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if not (current_user.is_superadmin or room.owner_id == current_user.id):
+        return jsonify({'error': 'Akses ditolak.'}), 403
+
+    msg = Message.query.filter_by(id=msg_id, room_id=room.id).first_or_404()
+    msg.is_hidden = not msg.is_hidden
+    db.session.commit()
+
+    pub_total = Message.query.filter_by(room_id=room.id, is_hidden=False, parent_id=None).count()
+    pub_unpinned = Message.query.filter_by(room_id=room.id, is_hidden=False, is_pinned=False, parent_id=None).count()
+    if msg.is_hidden:
+        socketio.emit('message_deleted', {'id': msg_id, 'total': pub_total, 'unpinned_total': pub_unpinned}, to=f"room_{room.slug}")
+    else:
+        socketio.emit('message_unhidden', {'id': msg_id}, to=f"room_{room.slug}")
+    return jsonify({'success': True, 'is_hidden': msg.is_hidden})
+
+@app.route('/api/room/<slug>/message/<int:msg_id>/pin', methods=['POST'])
+@login_required
+def room_pin_message(slug, msg_id):
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if not (current_user.is_superadmin or room.owner_id == current_user.id):
+        return jsonify({'error': 'Akses ditolak.'}), 403
+
+    msg = Message.query.filter_by(id=msg_id, room_id=room.id).first_or_404()
+    msg.is_pinned = not msg.is_pinned
+    if msg.is_pinned:
+        msg.pinned_until = get_wib_time() + datetime.timedelta(days=7)
+    else:
+        msg.pinned_until = None
+    db.session.commit()
+    return jsonify({'success': True, 'is_pinned': msg.is_pinned})
+
+@app.route('/api/room/<slug>/settings', methods=['POST'])
+@login_required
+def room_update_settings(slug):
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if not (current_user.is_superadmin or room.owner_id == current_user.id):
+        return jsonify({'error': 'Akses ditolak.'}), 403
+
+    data = request.get_json() or request.form
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    visitor_passcode = data.get('visitor_passcode', '').strip()
+
+    if name:
+        room.name = name
+    room.description = description
+    if room.is_private and visitor_passcode:
+        room.visitor_passcode_hash = generate_password_hash(visitor_passcode, method='pbkdf2:sha256')
+
+    db.session.commit()
+    return jsonify({'success': True, 'name': room.name, 'description': room.description})
+
+@app.route('/api/admin/room/<slug>/suspend', methods=['POST'])
+@login_required
+def admin_suspend_room(slug):
+    if not current_user.is_superadmin:
+        return jsonify({'error': 'Khusus Superadmin.'}), 403
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if room.slug == 'general':
+        return jsonify({'error': 'Lobi Utama tidak boleh dinonaktifkan.'}), 400
+    room.is_suspended = not room.is_suspended
+    db.session.commit()
+    return jsonify({'success': True, 'is_suspended': room.is_suspended})
+
+@app.route('/api/admin/room/<slug>/delete', methods=['POST'])
+@login_required
+def admin_delete_room(slug):
+    if not current_user.is_superadmin:
+        return jsonify({'error': 'Khusus Superadmin.'}), 403
+    room = Room.query.filter_by(slug=slug).first_or_404()
+    if room.slug == 'general':
+        return jsonify({'error': 'Lobi Utama tidak boleh dihapus.'}), 400
+    db.session.delete(room)
+    db.session.commit()
+    return jsonify({'success': True})
+
+# ─── Socket.IO Room Handlers ───────────────────────────────────────────────────
+
+@socketio.on('join_room')
+def handle_join_room(data):
+    room_slug = data.get('room', 'general') if isinstance(data, dict) else 'general'
+    join_room(f"room_{room_slug}")
+
+@socketio.on('leave_room')
+def handle_leave_room(data):
+    room_slug = data.get('room', 'general') if isinstance(data, dict) else 'general'
+    leave_room(f"room_{room_slug}")
+
 # ─── Backup ────────────────────────────────────────────────────────────────────
 
 def backup_messages():
@@ -1228,6 +1604,18 @@ with app.app_context():
         if 'reports' not in existing_cols:
             conn.execute(text("ALTER TABLE message ADD COLUMN reports INTEGER DEFAULT 0"))
             print('[Migration] Added reports column to message table.')
+        if 'room_id' not in existing_cols:
+            conn.execute(text("ALTER TABLE message ADD COLUMN room_id INTEGER REFERENCES room(id) ON DELETE CASCADE"))
+            print('[Migration] Added room_id column to message table.')
+
+        # Migrasi: tabel user (tambah is_superadmin & created_at)
+        user_cols = [c['name'] for c in inspector.get_columns('user')]
+        if 'is_superadmin' not in user_cols:
+            conn.execute(text("ALTER TABLE user ADD COLUMN is_superadmin BOOLEAN DEFAULT 0"))
+            print('[Migration] Added is_superadmin column to user table.')
+        if 'created_at' not in user_cols:
+            conn.execute(text("ALTER TABLE user ADD COLUMN created_at DATETIME"))
+            print('[Migration] Added created_at column to user table.')
 
         if not inspector.has_table('announcement'):
             conn.execute(text('''
@@ -1293,18 +1681,40 @@ with app.app_context():
 
         conn.commit()
 
+    # Inisialisasi default Lobi Utama (Room General) & link pesan legacy
+    general_room = Room.query.filter_by(slug='general').first()
+    if not general_room:
+        general_room = Room(
+            id=1,
+            slug='general',
+            name='Lobi Utama',
+            description='Ruang obrolan umum untuk semua pengguna.',
+            is_private=False,
+            owner_id=None
+        )
+        db.session.add(general_room)
+        db.session.commit()
+        print('[Migration] Created default general room.')
+
+    # Pastikan pesan yang belum ber-room diarahkan ke Lobi Utama
+    with db.engine.connect() as conn:
+        conn.execute(text('UPDATE message SET room_id = :rid WHERE room_id IS NULL'), {'rid': general_room.id})
+        conn.commit()
+
     admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
     admin_password = os.environ.get('ADMIN_PASSWORD', 'password')
 
-    admin_user = User.query.first()
+    admin_user = User.query.filter((User.username == admin_username) | (User.is_superadmin == True)).first()
     if not admin_user:
         hashed_pw = generate_password_hash(admin_password, method='pbkdf2:sha256')
-        admin_user = User(username=admin_username, password=hashed_pw)
+        admin_user = User(username=admin_username, password=hashed_pw, is_superadmin=True)
         db.session.add(admin_user)
         db.session.commit()
+        print(f'[Init] Created superadmin user {admin_username}.')
     else:
         admin_user.username = admin_username
         admin_user.password = generate_password_hash(admin_password, method='pbkdf2:sha256')
+        admin_user.is_superadmin = True
         db.session.commit()
 
 if __name__ == '__main__':

@@ -1,0 +1,7 @@
+{% set is_admin_section = is_admin_page or request.path.startswith('/admin') or request.path.startswith('/my-rooms') %}
+
+{% if is_admin_section %}
+  {% include "components/header/admin_header.html" %}
+{% else %}
+  {% include "components/header/public_header.html" %}
+{% endif %}
