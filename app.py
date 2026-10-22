@@ -1020,25 +1020,36 @@ def get_trending_hashtags():
 @app.route('/api/admin/messages')
 @login_required
 def admin_api_messages():
-    """Real-time polling for admin dashboard."""
+    """Real-time polling for admin dashboard. Respects room and visibility filters."""
     since_id = request.args.get('since', 0, type=int)
     filter_mode = request.args.get('filter', 'all')
+    room_filter = request.args.get('room', 'all')
     
     query = Message.query.filter(Message.id > since_id)
+    if room_filter != 'all':
+        query = query.join(Room).filter(Room.slug == room_filter)
+
     if filter_mode == 'visible':
-        query = query.filter_by(is_hidden=False)
+        query = query.filter(Message.is_hidden == False)
     elif filter_mode == 'hidden':
-        query = query.filter_by(is_hidden=True)
+        query = query.filter(Message.is_hidden == True)
         
     msgs = query.order_by(Message.timestamp.desc()).all()
     
-    reported_msgs = Message.query.filter(Message.reports > 0).all()
+    reported_query = Message.query.filter(Message.reports > 0)
+    if room_filter != 'all':
+        reported_query = reported_query.join(Room).filter(Room.slug == room_filter)
+    reported_msgs = reported_query.all()
     reported_updates = {
         m.id: {
             'reports': m.reports,
             'report_reasons': [r.reason for r in m.reports_list]
         } for m in reported_msgs
     }
+
+    base_stats = Message.query
+    if room_filter != 'all':
+        base_stats = base_stats.join(Room).filter(Room.slug == room_filter)
 
     return jsonify({
         'messages': [
@@ -1054,9 +1065,9 @@ def admin_api_messages():
             } for m in msgs
         ],
         'stats': {
-            'total': Message.query.count(),
-            'visible': Message.query.filter_by(is_hidden=False).count(),
-            'hidden': Message.query.filter_by(is_hidden=True).count()
+            'total': base_stats.count(),
+            'visible': base_stats.filter(Message.is_hidden == False).count(),
+            'hidden': base_stats.filter(Message.is_hidden == True).count()
         },
         'reported_updates': reported_updates
     })
@@ -1105,8 +1116,12 @@ def admin():
     messages = query.order_by(Message.timestamp.desc())\
         .paginate(page=page, per_page=per_page, error_out=False)
 
-    total_visible = Message.query.filter_by(is_hidden=False).count()
-    total_hidden = Message.query.filter_by(is_hidden=True).count()
+    base_stats = Message.query
+    if room_filter != 'all':
+        base_stats = base_stats.join(Room).filter(Room.slug == room_filter)
+
+    total_visible = base_stats.filter(Message.is_hidden == False).count()
+    total_hidden = base_stats.filter(Message.is_hidden == True).count()
     all_rooms = Room.query.order_by(Room.created_at.desc()).all()
 
     return render_template('admin.html',
@@ -1295,11 +1310,17 @@ def logout():
 @app.route('/my-rooms')
 @login_required
 def my_rooms():
+    my_owned_rooms = Room.query.filter_by(owner_id=current_user.id).order_by(Room.created_at.desc()).all()
     if current_user.is_superadmin:
-        rooms = Room.query.order_by(Room.created_at.desc()).all()
+        all_rooms = Room.query.order_by(Room.created_at.desc()).all()
+        all_users = User.query.order_by(User.created_at.desc()).all()
     else:
-        rooms = Room.query.filter_by(owner_id=current_user.id).order_by(Room.created_at.desc()).all()
-    return render_template('my_rooms.html', rooms=rooms)
+        all_rooms = []
+        all_users = []
+    return render_template('my_rooms.html',
+                           rooms=my_owned_rooms,
+                           all_rooms=all_rooms,
+                           all_users=all_users)
 
 @app.route('/api/rooms', methods=['GET'])
 def get_public_rooms():
@@ -1514,6 +1535,49 @@ def admin_delete_room(slug):
     db.session.delete(room)
     db.session.commit()
     return jsonify({'success': True})
+
+@app.route('/api/admin/user/<int:user_id>/reset-password', methods=['POST'])
+@login_required
+def admin_reset_user_password(user_id):
+    if not current_user.is_superadmin:
+        return jsonify({'error': 'Khusus Superadmin.'}), 403
+    user = User.query.get_or_404(user_id)
+    data = request.get_json() or request.form
+    new_password = data.get('new_password', '').strip()
+    if not new_password or len(new_password) < 4:
+        return jsonify({'error': 'Password minimal harus 4 karakter.'}), 400
+    user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Password untuk @{user.username} berhasil direset.'})
+
+@app.route('/api/admin/user/<int:user_id>/delete', methods=['POST'])
+@login_required
+def admin_delete_user(user_id):
+    if not current_user.is_superadmin:
+        return jsonify({'error': 'Khusus Superadmin.'}), 403
+    if user_id == current_user.id:
+        return jsonify({'error': 'Tidak dapat menghapus akun Anda sendiri.'}), 400
+    user = User.query.get_or_404(user_id)
+    username = user.username
+    # Release ownership of rooms owned by this user
+    for r in user.rooms:
+        r.owner_id = None
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Akun @{username} berhasil dihapus.'})
+
+@app.route('/api/admin/user/<int:user_id>/toggle-admin', methods=['POST'])
+@login_required
+def admin_toggle_user_admin(user_id):
+    if not current_user.is_superadmin:
+        return jsonify({'error': 'Khusus Superadmin.'}), 403
+    if user_id == current_user.id:
+        return jsonify({'error': 'Tidak dapat mengubah hak akses akun Anda sendiri.'}), 400
+    user = User.query.get_or_404(user_id)
+    user.is_superadmin = not user.is_superadmin
+    db.session.commit()
+    role_text = 'Superadmin' if user.is_superadmin else 'User/Moderator'
+    return jsonify({'success': True, 'is_superadmin': user.is_superadmin, 'message': f'Role @{user.username} diubah menjadi {role_text}.'})
 
 # ─── Socket.IO Room Handlers ───────────────────────────────────────────────────
 

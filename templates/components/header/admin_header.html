@@ -2,7 +2,7 @@
   <div class="admin-header-container header-inner">
     <div class="logo">
       <a href="/" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center;">
-        <span class="logo-mark">fg</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
+        <span class="logo-mark">con</span><span class="logo-sep">/</span><span class="logo-word">fess</span>
       </a>
       {% if current_user.is_authenticated and current_user.is_superadmin %}
         <span class="admin-badge">admin</span>
@@ -13,9 +13,11 @@
     <div class="header-actions">
       {% if current_user.is_authenticated and current_user.is_superadmin %}
         <a href="/admin" class="btn-outline-sm {% if request.path == '/admin' %}active{% endif %}">Messages</a>
+        <a href="/my-rooms" class="btn-outline-sm {% if request.path.startswith('/my-rooms') %}active{% endif %}">Rooms &amp; Users</a>
         <a href="/admin/feedback" class="btn-outline-sm {% if request.path.startswith('/admin/feedback') %}active{% endif %}">Feedback</a>
+      {% else %}
+        <a href="/my-rooms" class="btn-outline-sm {% if request.path.startswith('/my-rooms') %}active{% endif %}">My Rooms</a>
       {% endif %}
-      <a href="/my-rooms" class="btn-outline-sm {% if request.path.startswith('/my-rooms') %}active{% endif %}">My Rooms</a>
       <a href="/" class="btn-outline-sm" target="_blank">Lihat Board</a>
       <a href="/logout" class="btn-outline-sm btn-danger-outline">Logout</a>
       <button id="darkModeToggle" title="Toggle dark mode" aria-label="Toggle dark mode" onclick="toggleDarkMode()">

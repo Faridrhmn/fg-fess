@@ -65,10 +65,10 @@
         style="width: 100%; justify-content: center;">Kirim Notifikasi</button>
     </div>
 
-    <!-- Filter Tabs -->
-    <div class="filter-tabs"
-      style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-      <div style="display: flex; gap: 4px;">
+    <!-- Filter Bar -->
+    <div class="admin-filter-bar">
+      <!-- Status Tabs -->
+      <div class="admin-segmented-tabs">
         <a href="/admin?filter=all&room={{ room_filter }}"
           class="tab-btn {% if filter_mode == 'all' %}active{% endif %}">Semua</a>
         <a href="/admin?filter=visible&room={{ room_filter }}"
@@ -76,16 +76,26 @@
         <a href="/admin?filter=hidden&room={{ room_filter }}"
           class="tab-btn {% if filter_mode == 'hidden' %}active{% endif %}">Tersembunyi</a>
       </div>
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Filter Room:</label>
-        <select onchange="location.href='/admin?filter={{ filter_mode }}&room=' + this.value"
-          style="padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.8rem;">
-          <option value="all" {% if room_filter=='all' %}selected{% endif %}>Semua Room</option>
-          {% for r in all_rooms %}
-          <option value="{{ r.slug }}" {% if room_filter==r.slug %}selected{% endif %}>{{ r.name }} (/r/{{ r.slug }})
-          </option>
-          {% endfor %}
-        </select>
+
+      <!-- Room Filter Dropdown -->
+      <div class="admin-room-filter-wrap">
+        <label for="adminRoomFilterSelect" class="admin-room-filter-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+          Filter Room:
+        </label>
+        <div class="admin-select-custom">
+          <select id="adminRoomFilterSelect" onchange="location.href='/admin?filter={{ filter_mode }}&room=' + this.value">
+            <option value="all" {% if room_filter == 'all' %}selected{% endif %}>Semua Room</option>
+            {% for r in all_rooms %}
+            <option value="{{ r.slug }}" {% if room_filter == r.slug %}selected{% endif %}>{{ r.name }} (/r/{{ r.slug }})</option>
+            {% endfor %}
+          </select>
+          <svg class="admin-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
       </div>
     </div>
 
@@ -163,80 +173,14 @@
     {% if messages.pages > 1 %}
     <div class="pagination">
       {% if messages.has_prev %}
-      <a href="/admin?filter={{ filter_mode }}&page={{ messages.prev_num }}" class="page-btn">← Sebelumnya</a>
+      <a href="/admin?filter={{ filter_mode }}&room={{ room_filter }}&page={{ messages.prev_num }}" class="page-btn">← Sebelumnya</a>
       {% endif %}
       <span class="page-info">{{ messages.page }} / {{ messages.pages }}</span>
       {% if messages.has_next %}
-      <a href="/admin?filter={{ filter_mode }}&page={{ messages.next_num }}" class="page-btn">Berikutnya →</a>
+      <a href="/admin?filter={{ filter_mode }}&room={{ room_filter }}&page={{ messages.next_num }}" class="page-btn">Berikutnya →</a>
       {% endif %}
     </div>
     {% endif %}
-    <!-- Master Room Management Section (Super Admin) -->
-    <div class="compose-card" style="margin-top: 24px; padding: 18px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <span
-          style="font-weight: 700; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 6px;">
-          <span>🪐</span> Kelola Semua Room Platform
-        </span>
-        <span style="font-size: 0.78rem; color: var(--text-muted);">Super Admin Control</span>
-      </div>
-      <div style="overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem; text-align: left;">
-          <thead>
-            <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted);">
-              <th style="padding: 6px 8px;">Room</th>
-              <th style="padding: 6px 8px;">Slug</th>
-              <th style="padding: 6px 8px;">Tipe</th>
-              <th style="padding: 6px 8px;">Pemilik</th>
-              <th style="padding: 6px 8px;">Pesan</th>
-              <th style="padding: 6px 8px;">Status</th>
-              <th style="padding: 6px 8px; text-align: right;">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in all_rooms %}
-            <tr style="border-bottom: 1px solid var(--border);">
-              <td style="padding: 8px; font-weight: 600; color: var(--text);">
-                <a href="/r/{{ r.slug }}" target="_blank" style="color: inherit; text-decoration: none;">{{ r.name
-                  }}</a>
-              </td>
-              <td style="padding: 8px; color: var(--text-muted);">/r/{{ r.slug }}</td>
-              <td style="padding: 8px;">
-                {% if r.is_private %}<span style="color: #f59e0b; font-weight: 600;">🔒 Privat</span>{% else %}<span
-                  style="color: #10b981; font-weight: 600;">🌐 Publik</span>{% endif %}
-              </td>
-              <td style="padding: 8px; color: var(--text-muted);">
-                {% if r.owner %}@{{ r.owner.username }}{% else %}<em>Sistem (Umum)</em>{% endif %}
-              </td>
-              <td style="padding: 8px;">{{ r.messages.count() }}</td>
-              <td style="padding: 8px;">
-                {% if r.is_suspended %}
-                <span style="color: #ef4444; font-weight: 600;">🚫 Dibekukan</span>
-                {% else %}
-                <span style="color: #10b981; font-weight: 600;">✓ Aktif</span>
-                {% endif %}
-              </td>
-              <td style="padding: 8px; text-align: right;">
-                {% if r.slug != 'general' %}
-                <button type="button"
-                  onclick="adminSuspendRoom('{{ r.slug }}', {{ 'true' if r.is_suspended else 'false' }})"
-                  style="padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.72rem; cursor: pointer;">
-                  {% if r.is_suspended %}Aktifkan{% else %}Bekukan{% endif %}
-                </button>
-                <button type="button" onclick="adminDeleteRoom('{{ r.slug }}')"
-                  style="padding: 3px 8px; border-radius: 4px; border: 1px solid #ef4444; background: var(--surface); color: #ef4444; font-size: 0.72rem; cursor: pointer; margin-left: 4px;">
-                  Hapus
-                </button>
-                {% else %}
-                <em style="color: var(--text-muted); font-size: 0.75rem;">Default</em>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
   </main>
 
   <script>
@@ -259,18 +203,29 @@
       setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
     }
 
-    function showConfirm(msg) {
+    function showConfirm(options) {
+      const opts = typeof options === 'string'
+        ? { message: options, title: 'Konfirmasi Hapus', icon: '🗑️', okText: 'Ya, Hapus', okDanger: true }
+        : {
+            title: options.title || 'Konfirmasi',
+            message: options.message || '',
+            icon: options.icon || '⚠️',
+            okText: options.okText || 'Ya, Lanjutkan',
+            cancelText: options.cancelText || 'Batal',
+            okDanger: options.okDanger !== false
+          };
+
       return new Promise(resolve => {
         const overlay = document.createElement('div');
         overlay.className = 'confirm-overlay';
         overlay.innerHTML = `
           <div class="confirm-box">
-            <div class="confirm-icon">🗑️</div>
-            <div class="confirm-title">Konfirmasi Hapus</div>
-            <div class="confirm-msg">${msg}</div>
+            <div class="confirm-icon">${opts.icon}</div>
+            <div class="confirm-title">${opts.title}</div>
+            <div class="confirm-msg">${opts.message}</div>
             <div class="confirm-actions">
-              <button class="confirm-cancel" id="confirmCancel">Batal</button>
-              <button class="confirm-ok" id="confirmOk">Ya, Hapus</button>
+              <button class="confirm-cancel" id="confirmCancel">${opts.cancelText}</button>
+              <button class="confirm-ok" id="confirmOk" style="${opts.okDanger ? '' : 'background: var(--primary);'}">${opts.okText}</button>
             </div>
           </div>`;
         document.body.appendChild(overlay);
@@ -390,6 +345,7 @@
     const urlParams = new URLSearchParams(window.location.search);
     const page = urlParams.get('page');
     const filterMode = urlParams.get('filter') || 'all';
+    const roomFilter = urlParams.get('room') || 'all';
 
     function buildAdminCard(msg) {
       const loc = msg.location && msg.location !== 'Tidak diketahui' ? `· 📍 ${msg.location}` : '';
@@ -443,7 +399,7 @@
     if (!page || page === '1') {
       setInterval(async () => {
         try {
-          const res = await fetch(`/api/admin/messages?since=${latestId}&filter=${filterMode}`);
+          const res = await fetch(`/api/admin/messages?since=${latestId}&filter=${encodeURIComponent(filterMode)}&room=${encodeURIComponent(roomFilter)}`);
           const data = await res.json();
 
           if (data.messages && data.messages.length > 0) {
@@ -495,41 +451,6 @@
           }
         } catch (e) { }
       }, 5000);
-    }
-
-    async function adminSuspendRoom(slug, isSuspended) {
-      const actionText = isSuspended ? 'mengaktifkan kembali' : 'membekukan sementara';
-      if (!confirm(`Yakin ingin ${actionText} room /r/${slug}?`)) return;
-      try {
-        const res = await fetch(`/api/admin/room/${encodeURIComponent(slug)}/suspend`, {
-          method: 'POST'
-        });
-        const data = await res.json();
-        if (data.success) {
-          window.location.reload();
-        } else {
-          alert(data.error || 'Gagal mengubah status room.');
-        }
-      } catch (e) {
-        alert('Terjadi kesalahan jaringan.');
-      }
-    }
-
-    async function adminDeleteRoom(slug) {
-      if (!confirm(`PERINGATAN: Menghapus room /r/${slug} akan menghapus SELURUH pesan di dalamnya secara permanen!\nLanjutkan?`)) return;
-      try {
-        const res = await fetch(`/api/admin/room/${encodeURIComponent(slug)}/delete`, {
-          method: 'POST'
-        });
-        const data = await res.json();
-        if (data.success) {
-          window.location.reload();
-        } else {
-          alert(data.error || 'Gagal menghapus room.');
-        }
-      } catch (e) {
-        alert('Terjadi kesalahan jaringan.');
-      }
     }
   </script>
   <script src="/static/theme.js"></script>

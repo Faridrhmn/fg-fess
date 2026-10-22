@@ -94,6 +94,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeAllDropdowns();
     closeCreateRoomModal();
+    closeRoomSettingsModal();
   }
 });
 
@@ -249,7 +250,81 @@ function showCreateRoomError(msg) {
   if (errEl) {
     errEl.textContent = msg;
     errEl.style.display = 'block';
+  } else if (typeof showToast === 'function') {
+    showToast(msg, 'error');
   } else {
-    alert(msg);
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;padding:10px 18px;border-radius:8px;font-size:0.85rem;font-weight:500;color:#fff;background:var(--danger, #dc2626);box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .3s;';
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
   }
 }
+
+// ─── Modal Pengaturan Room (Moderator) ───────────────────────────────────────
+
+function openRoomSettingsModal() {
+  closeAllDropdowns();
+  const modal = document.getElementById('roomSettingsModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    const err = document.getElementById('roomSettingsError');
+    const succ = document.getElementById('roomSettingsSuccess');
+    if (err) err.style.display = 'none';
+    if (succ) succ.style.display = 'none';
+  }
+}
+
+function closeRoomSettingsModal() {
+  const modal = document.getElementById('roomSettingsModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleSaveRoomSettings(event) {
+  event.preventDefault();
+  const name = (document.getElementById('rs_name')?.value || '').trim();
+  const desc = (document.getElementById('rs_desc')?.value || '').trim();
+  const passcode = (document.getElementById('rs_passcode')?.value || '').trim();
+  const errEl = document.getElementById('roomSettingsError');
+  const succEl = document.getElementById('roomSettingsSuccess');
+
+  if (errEl) errEl.style.display = 'none';
+  if (succEl) succEl.style.display = 'none';
+
+  const slug = window.CURRENT_ROOM_SLUG;
+  if (!slug) return;
+
+  try {
+    const res = await fetch(`/api/room/${encodeURIComponent(slug)}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name,
+        description: desc,
+        visitor_passcode: passcode
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      if (errEl) {
+        errEl.textContent = data.error || 'Gagal menyimpan pengaturan.';
+        errEl.style.display = 'block';
+      }
+      return;
+    }
+
+    if (succEl) {
+      succEl.textContent = 'Pengaturan room berhasil disimpan!';
+      succEl.style.display = 'block';
+    }
+    setTimeout(() => {
+      window.location.reload();
+    }, 700);
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = 'Terjadi kesalahan jaringan.';
+      errEl.style.display = 'block';
+    }
+  }
+}
+

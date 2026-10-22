@@ -66,17 +66,6 @@
   <!-- Active reactions bar -->
   <div class="reactions-bar" id="reactions-{{ msg.id }}"></div>
 
-  {% if is_moderator %}
-  <div class="msg-mod-controls">
-    <button type="button" class="btn-mod-action" onclick="togglePinMessage({{ msg.id }})">
-      {% if msg.is_pinned %}Lepas Pin{% else %}📌 Pin{% endif %}
-    </button>
-    <button type="button" class="btn-mod-action btn-mod-delete" onclick="deleteMessage({{ msg.id }})">
-      🗑️ Hapus
-    </button>
-  </div>
-  {% endif %}
-
   <!-- Reply Thread (hidden by default) -->
   <div class="reply-thread hidden" id="thread-{{ msg.id }}">
     <div class="reply-list" id="reply-list-{{ msg.id }}">

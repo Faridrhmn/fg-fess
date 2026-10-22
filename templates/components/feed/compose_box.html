@@ -46,12 +46,17 @@
       <button type="button" class="btn-add-option" id="btnAddPollOption" onclick="addPollOption()">+ Tambah Pilihan</button>
       <div class="poll-duration-wrapper">
         <label for="pollDurationSelect" class="poll-duration-label">Batas:</label>
-        <select id="pollDurationSelect" class="poll-duration-select">
-          <option value="0">Tanpa batas</option>
-          <option value="1">1 Hari (24 Jam)</option>
-          <option value="3">3 Hari</option>
-          <option value="7">7 Hari</option>
-        </select>
+        <div class="poll-select-custom">
+          <select id="pollDurationSelect" class="poll-duration-select">
+            <option value="0">Tanpa batas</option>
+            <option value="1">1 Hari (24 Jam)</option>
+            <option value="3">3 Hari</option>
+            <option value="7">7 Hari</option>
+          </select>
+          <svg class="poll-select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
       </div>
       <span class="poll-hint">Maks. 5 pilihan</span>
     </div>
