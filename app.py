@@ -1790,7 +1790,7 @@ if __name__ == '__main__':
     scheduler.add_job(func=cleanup_old_images, trigger='interval', days=1)
     scheduler.start()
     try:
-        socketio.run(app, host=host, port=port, debug/home/ubuntu/pathmu=debug_mode)
+        socketio.run(app, host=host, port=port, debug=debug_mode)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
 
