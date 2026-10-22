@@ -1783,12 +1783,14 @@ with app.app_context():
 
 if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    port = int(os.environ.get('PORT', 1947))
+    host = os.environ.get('HOST', '127.0.0.1')
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=backup_messages, trigger='interval', days=30)
     scheduler.add_job(func=cleanup_old_images, trigger='interval', days=1)
     scheduler.start()
     try:
-        socketio.run(app, debug=debug_mode, port=5002)
+        socketio.run(app, host=host, port=port, debug/home/ubuntu/pathmu=debug_mode)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
 
